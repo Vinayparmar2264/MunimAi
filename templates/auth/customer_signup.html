@@ -1,0 +1,218 @@
+{% extends "base.html" %}
+{% block title %}Customer Sign Up | MerchAI{% endblock %}
+{% block content %}
+<div class="auth-page">
+  <div class="container">
+    <div class="auth-card" style="max-width:480px">
+      <div class="auth-logo">
+        <div class="brand-logo"><i class="bi bi-shop"></i></div>
+        <span class="brand-name">MerchAI</span>
+      </div>
+
+      <h1 class="auth-title">Find shops near you 🛍️</h1>
+      <p class="auth-sub">
+        Create a free customer account to discover nearby shops,
+        check prices, and get AI-powered shopping help.
+      </p>
+
+      {% if errors %}
+      <div class="auth-err">
+        <i class="bi bi-exclamation-triangle-fill me-2"></i>
+        {% for e in errors %}<div>{{ e }}</div>{% endfor %}
+      </div>
+      {% endif %}
+
+      <form method="POST" id="customerSignupForm">
+
+        <div class="auth-field">
+          <label class="form-label">Your full name</label>
+          <div class="auth-input-wrap">
+            <i class="bi bi-person-fill auth-field-icon"></i>
+            <input type="text" name="name" class="auth-input"
+                   placeholder="Your name"
+                   value="{{ name or '' }}" required autocomplete="name"/>
+          </div>
+        </div>
+
+        <div class="auth-field">
+          <label class="form-label">Email address</label>
+          <div class="auth-input-wrap">
+            <i class="bi bi-envelope-fill auth-field-icon"></i>
+            <input type="email" name="email" class="auth-input"
+                   placeholder="you@example.com"
+                   value="{{ email or '' }}" required autocomplete="email"/>
+          </div>
+        </div>
+
+        <div class="auth-field">
+          <label class="form-label">Password <span style="color:var(--text-muted);font-weight:400">(at least 6 characters)</span></label>
+          <div class="auth-input-wrap">
+            <i class="bi bi-lock-fill auth-field-icon"></i>
+            <input type="password" name="password" id="pw1" class="auth-input"
+                   placeholder="Create a password" required autocomplete="new-password"/>
+            <button type="button" class="auth-eye" onclick="toggle('pw1',this)">
+              <i class="bi bi-eye-fill"></i>
+            </button>
+          </div>
+        </div>
+
+        <div class="auth-field">
+          <label class="form-label">Confirm password</label>
+          <div class="auth-input-wrap">
+            <i class="bi bi-shield-lock-fill auth-field-icon"></i>
+            <input type="password" name="confirm_password" id="pw2" class="auth-input"
+                   placeholder="Repeat your password" required autocomplete="new-password"/>
+            <button type="button" class="auth-eye" onclick="toggle('pw2',this)">
+              <i class="bi bi-eye-fill"></i>
+            </button>
+          </div>
+          <div class="pw-match-hint" id="pwMatch"></div>
+        </div>
+
+        <!-- Location Capture -->
+        <div class="auth-field">
+          <label class="form-label">
+            Your location
+            <span style="color:var(--text-muted);font-weight:400">(optional — helps find shops near you)</span>
+          </label>
+
+          <button type="button" class="btn-teal w-100 mb-2" onclick="captureLocation()" id="locBtn">
+            <i class="bi bi-crosshair2 me-2"></i>Detect My Location Automatically
+          </button>
+
+          <div id="locStatus" style="font-size:0.8rem;margin-bottom:8px;display:none;
+                                     padding:8px 12px;border-radius:var(--r-md);"></div>
+
+          <!-- Manual fallback -->
+          <div id="manualLoc" style="display:none">
+            <div class="row g-2">
+              <div class="col-12">
+                <input type="text" class="auth-input" id="locNameVis"
+                       placeholder="Location name (e.g. Bhilai Sector 6)"
+                       oninput="document.getElementById('locName').value=this.value"/>
+              </div>
+              <div class="col-6">
+                <input type="number" class="auth-input" id="latVis"
+                       placeholder="Latitude (e.g. 21.1938)" step="0.0001"
+                       oninput="document.getElementById('hidLat').value=this.value"/>
+              </div>
+              <div class="col-6">
+                <input type="number" class="auth-input" id="lonVis"
+                       placeholder="Longitude (e.g. 81.3509)" step="0.0001"
+                       oninput="document.getElementById('hidLon').value=this.value"/>
+              </div>
+            </div>
+          </div>
+
+          <button type="button"
+                  style="font-size:0.78rem;color:var(--text-muted);background:none;border:none;
+                         cursor:pointer;padding:4px 0;margin-top:4px;text-decoration:underline"
+                  onclick="document.getElementById('manualLoc').style.display='block'">
+            Enter location manually instead
+          </button>
+
+          <!-- Hidden fields submitted with form -->
+          <input type="hidden" name="latitude"      id="hidLat"/>
+          <input type="hidden" name="longitude"     id="hidLon"/>
+          <input type="hidden" name="location_name" id="locName"/>
+        </div>
+
+        <button type="submit" class="btn-orange auth-btn">
+          <i class="bi bi-person-check-fill me-2"></i>Create Customer Account
+        </button>
+      </form>
+
+      <div class="auth-divider"><span>or</span></div>
+
+      <a href="{{ url_for('auth.signup') }}"
+         class="btn-outline w-100" style="justify-content:center;margin-bottom:12px">
+        <i class="bi bi-shop me-2"></i>Sign up as a Shopkeeper instead
+      </a>
+
+      <div class="auth-switch">
+        Already have an account? <a href="{{ url_for('auth.login') }}">Log in →</a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function toggle(id, btn) {
+  const el = document.getElementById(id);
+  el.type = el.type === 'password' ? 'text' : 'password';
+  btn.innerHTML = el.type === 'password'
+    ? '<i class="bi bi-eye-fill"></i>'
+    : '<i class="bi bi-eye-slash-fill"></i>';
+}
+
+document.getElementById('pw2').addEventListener('input', function() {
+  const el  = document.getElementById('pwMatch');
+  if (!this.value) { el.innerHTML = ''; return; }
+  el.innerHTML = this.value === document.getElementById('pw1').value
+    ? '<span style="color:var(--green);font-weight:600">✓ Passwords match</span>'
+    : '<span style="color:var(--red);font-weight:600">✗ Passwords do not match</span>';
+});
+
+function captureLocation() {
+  const btn = document.getElementById('locBtn');
+  btn.innerHTML = '<i class="bi bi-hourglass-split me-2"></i>Detecting location…';
+  btn.disabled  = true;
+
+  if (!navigator.geolocation) {
+    showLocStatus('Your browser does not support GPS. Please enter manually.', false);
+    btn.innerHTML = '<i class="bi bi-crosshair2 me-2"></i>Detect My Location Automatically';
+    btn.disabled  = false;
+    document.getElementById('manualLoc').style.display = 'block';
+    return;
+  }
+
+  navigator.geolocation.getCurrentPosition(
+    function(pos) {
+      const lat = pos.coords.latitude.toFixed(6);
+      const lon = pos.coords.longitude.toFixed(6);
+
+      document.getElementById('hidLat').value  = lat;
+      document.getElementById('hidLon').value  = lon;
+      document.getElementById('latVis').value  = lat;
+      document.getElementById('lonVis').value  = lon;
+
+      // Try reverse geocode via browser (approximate city name)
+      fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`)
+        .then(r => r.json())
+        .then(d => {
+          const name = d.address?.suburb || d.address?.city_district
+                    || d.address?.city   || d.address?.town || '';
+          document.getElementById('locName').value    = name;
+          document.getElementById('locNameVis').value = name;
+          showLocStatus(`✓ Location found: ${name || lat+', '+lon}`, true);
+        })
+        .catch(() => {
+          document.getElementById('locName').value = `${lat}, ${lon}`;
+          showLocStatus(`✓ Location captured: ${lat}, ${lon}`, true);
+        });
+
+      btn.innerHTML = '<i class="bi bi-check2 me-2"></i>Location Detected ✓';
+      btn.disabled  = false;
+    },
+    function(err) {
+      showLocStatus('Could not get GPS location. Please enter manually below.', false);
+      btn.innerHTML = '<i class="bi bi-crosshair2 me-2"></i>Try Again';
+      btn.disabled  = false;
+      document.getElementById('manualLoc').style.display = 'block';
+    },
+    { timeout: 10000, maximumAge: 60000 }
+  );
+}
+
+function showLocStatus(msg, ok) {
+  const el = document.getElementById('locStatus');
+  el.style.display     = 'block';
+  el.textContent       = msg;
+  el.style.background  = ok ? 'var(--bg-green)' : 'var(--bg-red)';
+  el.style.color       = ok ? 'var(--green)'    : 'var(--red)';
+  el.style.border      = `1px solid ${ok ? '#86EFAC' : '#FECACA'}`;
+}
+</script>
+{% endblock %}

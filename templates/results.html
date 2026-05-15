@@ -1,0 +1,351 @@
+{% extends "base.html" %}
+{% block title %}Your Results | MerchAI{% endblock %}
+{% block content %}
+
+<div class="page-hero">
+  <div class="container-xl">
+    <div class="d-flex align-items-center gap-4">
+      <div class="page-hero-icon" style="background:linear-gradient(135deg,var(--green),#15803D);color:white">
+        <i class="bi bi-bar-chart-line-fill"></i>
+      </div>
+      <div>
+        <h1 class="page-hero-title">📊 Your Full Report</h1>
+        <p class="page-hero-sub">Complete analysis for <strong>{{ product_name }}</strong> · <span style="color:{% if d.confidence_pct>=75 %}var(--teal){% elif d.confidence_pct>=55 %}var(--yellow){% else %}var(--red){% endif %}">{{ d.confidence_pct }}% AI accuracy</span></p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<section class="page-section">
+  <div class="container-xl">
+
+    <!-- 4 big result cards -->
+    <div class="row g-4 mb-4">
+      <!-- Order -->
+      <div class="col-md-6 col-lg-3">
+        <div class="result-card" style="border-top:4px solid {% if d.order_urgency in ['CRITICAL','HIGH'] %}var(--red){% elif d.order_urgency=='MEDIUM' %}var(--yellow){% else %}var(--green){% endif %}">
+          <div class="rc-icon">{% if d.order_action in ['ORDER_URGENT','ORDER_NOW'] %}🚨{% elif d.order_action=='ORDER_SOON' %}📋{% elif d.order_action=='REDUCE_STOCK' %}⬇️{% else %}✅{% endif %}</div>
+          <div class="rc-tag">📦 Order Advice</div>
+          {% if d.order_action in ['ORDER_URGENT','ORDER_NOW','ORDER_SOON'] %}
+          <div class="rc-num" style="color:{% if d.order_urgency in ['CRITICAL','HIGH'] %}var(--red){% elif d.order_urgency=='MEDIUM' %}var(--yellow){% else %}var(--teal){% endif %}">{{ d.window_reorder_qty }}</div>
+          <div class="rc-sub">units for next <strong>{{ d.reorder_window_days }} days</strong></div>
+          <div style="font-size:0.75rem;background:var(--bg-soft);border-radius:var(--r-md);padding:8px 10px">
+            <div style="display:flex;justify-content:space-between;margin-bottom:3px"><span style="color:var(--text-muted)">Expected demand</span><strong>{{ d.demand_for_window }}</strong></div>
+            <div style="display:flex;justify-content:space-between"><span style="color:var(--text-muted)">Your stock</span><strong>{{ d.stock|int }}</strong></div>
+          </div>
+          {% elif d.order_action=='REDUCE_STOCK' %}
+          <div class="rc-num" style="color:var(--blue)">Reduce</div>
+          <div class="rc-sub">Too much stock — don't order more</div>
+          {% else %}
+          <div class="rc-num" style="color:var(--green)">✓</div>
+          <div class="rc-sub">Stock is at a healthy level</div>
+          {% endif %}
+          <div class="rc-meter mt-2"><div class="rc-fill" style="width:{% if d.order_urgency=='CRITICAL' %}95%{% elif d.order_urgency=='HIGH' %}75%{% elif d.order_urgency=='MEDIUM' %}45%{% else %}10%{% endif %};background:{% if d.order_urgency in ['CRITICAL','HIGH'] %}var(--red){% elif d.order_urgency=='MEDIUM' %}var(--yellow){% else %}var(--teal){% endif %}"></div></div>
+          <div class="rc-meta">Priority: {{ d.order_urgency }}</div>
+        </div>
+      </div>
+
+      <!-- Discount -->
+      <div class="col-md-6 col-lg-3">
+        <div class="result-card" style="border-top:4px solid {% if d.discount_tier=='AGGRESSIVE' %}var(--red){% elif d.discount_tier in ['MODERATE','LIGHT','COMPETITIVE'] %}var(--yellow){% else %}var(--teal){% endif %}">
+          <div class="rc-icon">🏷️</div>
+          <div class="rc-tag">💰 Pricing Advice</div>
+          {% if d.discount_action=='APPLY_DISCOUNT' %}
+          <div class="rc-num" style="color:var(--yellow)">{{ d.discount_pct }}%</div>
+          <div class="rc-sub">discount recommended</div>
+          <div class="price-chip">
+            <span class="price-old">₹{{ d.current_price }}</span>
+            <i class="bi bi-arrow-right" style="font-size:0.8rem;color:var(--text-muted)"></i>
+            <span class="price-new">₹{{ d.discounted_price }}</span>
+          </div>
+          {% if not d.will_sell_before_expiry %}
+          <div class="tag tag-red mt-2" style="font-size:0.7rem">Stock takes {{ d.days_to_sell }}d, expires in {{ d.expiry_days }}d</div>
+          {% else %}
+          <div class="tag tag-blue mt-2" style="font-size:0.7rem">Overstock clearance</div>
+          {% endif %}
+          {% else %}
+          <div class="rc-num" style="color:var(--teal)">✓</div>
+          <div class="rc-sub">Keep ₹{{ d.current_price }} — no discount needed</div>
+          {% if d.will_sell_before_expiry %}
+          <div class="tag tag-green mt-2" style="font-size:0.7rem">Sells {{ (d.expiry_days-d.days_to_sell)|round|int }}d before expiry</div>
+          {% endif %}
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- Health -->
+      <div class="col-md-6 col-lg-3">
+        <div class="result-card" style="border-top:4px solid {% if d.health_score>=80 %}var(--teal){% elif d.health_score>=65 %}var(--blue){% elif d.health_score>=50 %}var(--yellow){% else %}var(--red){% endif %}">
+          <div class="rc-icon">❤️</div>
+          <div class="rc-tag">🏪 Overall Health</div>
+          <div class="rc-num" style="color:{% if d.health_score>=80 %}var(--teal){% elif d.health_score>=65 %}var(--blue){% elif d.health_score>=50 %}var(--yellow){% else %}var(--red){% endif %}">{{ d.health_score }}<span style="font-size:1rem;opacity:.5">/100</span></div>
+          <div class="rc-sub">{{ d.health_grade }} · {{ d.category }}</div>
+          <div class="rc-meter mt-2"><div class="rc-fill" id="healthFill" data-w="{{ d.health_score }}%" style="width:0%;background:{% if d.health_score>=80 %}var(--teal){% elif d.health_score>=65 %}var(--blue){% elif d.health_score>=50 %}var(--yellow){% else %}var(--red){% endif %}"></div></div>
+          <div class="rc-meta">Return on investment: {{ d.gmroi }}×</div>
+        </div>
+      </div>
+
+      <!-- CSAT -->
+      <div class="col-md-6 col-lg-3">
+        <div class="result-card" style="border-top:4px solid {% if d.csat_score>=85 %}var(--green){% elif d.csat_score>=70 %}var(--blue){% elif d.csat_score>=55 %}var(--yellow){% else %}var(--red){% endif %}">
+          <div class="rc-icon">😊</div>
+          <div class="rc-tag">💛 Customer Happiness</div>
+          <div class="rc-num" style="color:{% if d.csat_score>=85 %}var(--green){% elif d.csat_score>=70 %}var(--blue){% elif d.csat_score>=55 %}var(--yellow){% else %}var(--red){% endif %}">{{ d.csat_score }}<span style="font-size:1rem;opacity:.5">/100</span></div>
+          <div class="rc-sub">{{ d.csat_level }}</div>
+          <div class="kpi-row mt-2">
+            {% for label, val in [('Stock',d.availability_score),('Price',d.price_score),('Supply',d.fulfill_score),('Fresh',d.freshness_score)] %}
+            <div class="kpi-box" style="min-width:unset;flex:1"><div class="kpi-val" style="font-size:0.95rem">{{ val }}</div><div class="kpi-label">{{ label }}</div></div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- LLM SUMMARY PANEL -->
+    <div class="llm-summary-panel" id="llmSummaryPanel">
+      <div class="llmp-header">
+        <div class="llmp-icon"><i class="bi bi-cpu-fill"></i></div>
+        <div>
+          <div class="llmp-title">🤖 AI Narrative Summary</div>
+          <div class="llmp-sub">Ask AI to explain this analysis in plain language</div>
+        </div>
+        <div class="d-flex gap-2 ms-auto">
+          <button class="llmp-btn" onclick="getLLMSummary()" id="summaryBtn">
+            <i class="bi bi-stars me-1"></i>Generate Summary
+          </button>
+          <button class="llmp-btn llmp-btn-outline" onclick="getLLMPlan()" id="planBtn">
+            <i class="bi bi-calendar-check me-1"></i>7-Day Action Plan
+          </button>
+        </div>
+      </div>
+      <div id="llmSummaryContent" class="llmp-content" style="display:none">
+        <div id="llmSummaryText"></div>
+      </div>
+    </div>
+
+    <!-- Charts row -->
+    <div class="row g-4 mb-4">
+      <div class="col-lg-5">
+        <div class="card-white h-100">
+          <h3 style="font-size:1rem;font-weight:800;margin-bottom:16px">😊 Customer Score Breakdown</h3>
+          <canvas id="csatChart" height="200"></canvas>
+        </div>
+      </div>
+      <div class="col-lg-7">
+        <div class="card-white h-100">
+          <h3 style="font-size:1rem;font-weight:800;margin-bottom:16px">💵 Your Money — Next 30 Days</h3>
+          <canvas id="finChart" height="200"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Full table + checklist -->
+    <div class="row g-4 mb-4">
+      <div class="col-lg-7">
+        <div class="card-white">
+          <div class="card-section-title"><i class="bi bi-clipboard-data-fill"></i>Complete Analysis</div>
+          <table class="friendly-table w-100">
+            <tbody>
+              {% for icon, label, val, hl in [
+                ('📦','Product / Type', product_name + ' · ' + d.category, false),
+                ('⚡','Sales speed', d.velocity_adjusted|string + ' units/day · ' + d.demand_pattern, false),
+                ('📈','7-day / 30-day / 90-day forecast', d.predicted_demand|string + ' / ' + d.forecast_d30|string + ' / ' + d.forecast_d90|string + ' units', false),
+                ('🗃️','Stock / Days left', d.stock|int|string + ' units · ' + d.days_cover|string + ' days', false),
+                ('🛡️','Safety buffer / Order trigger', d.safety_stock|string + ' / ' + d.rop|string + ' units', false),
+                ('⏱️','Days to sell out', d.days_to_sell|string + ' days ' + ('✓ before expiry' if d.will_sell_before_expiry else '⚠ may expire'), not d.will_sell_before_expiry),
+                ('🏷️','Discount / New margin', d.discount_pct|string + '% · Margin after: ' + d.new_margin_pct|string + '%', false),
+                ('🏢','vs Competitor', d.comp_status, false),
+                ('📉','How fast stock sells', d.turnover_ratio|string + '× / year (target ' + d.target_turnover|string + '×)', d.turnover_gap < 0),
+                ('💾','Monthly storage cost', '₹' + '{:,}'.format(d.carrying_cost_30d|int), false),
+                ('📊','Expected profit (30 days)', '₹' + '{:,}'.format(d.projected_profit_30d|int) + ' from ₹' + '{:,}'.format(d.projected_revenue_30d|int), true),
+                ('🛡️','AI confidence', d.confidence_pct|string + '%', false),
+              ] %}
+              <tr {% if hl %}class="hl-row"{% endif %} style="border-bottom:1px solid var(--border-soft)">
+                <td style="padding:9px 0;color:var(--text-muted);font-size:0.85rem">{{ icon }} {{ label }}</td>
+                <td style="padding:9px 0;font-weight:700;font-size:0.85rem;text-align:right">{{ val }}</td>
+              </tr>
+              {% endfor %}
+              {% if d.at_risk_value > 0 %}
+              <tr style="border-bottom:1px solid #FECACA;background:var(--red-light)">
+                <td style="padding:9px 0;color:var(--red);font-size:0.85rem">⚠️ Money at risk (if no action)</td>
+                <td style="padding:9px 0;font-weight:800;text-align:right;color:var(--red)">₹{{ '{:,}'.format(d.at_risk_value|int) }}</td>
+              </tr>
+              {% endif %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="col-lg-5">
+        <div class="kpi-row mb-3">
+          {% for emoji, val, label, cls in [
+            ('📦',d.window_reorder_qty if d.window_reorder_qty > 0 else '✓','Reorder qty','kpi-bad' if d.window_reorder_qty>0 else ''),
+            ('🏷️',d.discount_pct|string + '%','Discount','kpi-warn' if d.discount_pct>0 else ''),
+            ('💰',d.gmroi|string + '×','Return',''),
+            ('🎯',d.fill_rate|string + '%','In-stock','kpi-warn' if d.fill_rate<80 else ''),
+          ] %}
+          <div class="kpi-box {{ cls }}"><div class="kpi-val">{{ val }}</div><div class="kpi-label">{{ emoji }} {{ label }}</div></div>
+          {% endfor %}
+        </div>
+
+        {% if d.at_risk_value > 0 %}
+        <div class="risk-callout">
+          <div class="risk-callout-head">⚠️ Money at Risk (if you do nothing)</div>
+          <div class="risk-callout-val">₹{{ '{:,}'.format(d.at_risk_value|int) }}</div>
+          <div class="risk-callout-note">{{ d.risk_msg }}</div>
+        </div>
+        {% endif %}
+
+        <div class="card-white">
+          <div class="card-section-title"><i class="bi bi-list-check"></i>What to Do Right Now</div>
+          <ul class="action-checklist">
+            <li class="ac-item {% if d.order_action in ['ORDER_URGENT','ORDER_NOW'] %}ac-do{% elif d.order_action in ['ORDER_SOON','REDUCE_STOCK'] %}ac-warn{% else %}ac-ok{% endif %}">
+              <div class="ac-item-icon"><i class="bi bi-{% if d.order_action in ['ORDER_URGENT','ORDER_NOW'] %}bell-fill{% elif d.order_action in ['ORDER_SOON','REDUCE_STOCK'] %}exclamation{% else %}check-lg{% endif %}"></i></div>
+              <span>{% if d.order_action=='ORDER_URGENT' %}<strong>Order {{ d.window_reorder_qty }} units immediately</strong> — you're about to run out
+              {% elif d.order_action=='ORDER_NOW' %}<strong>Order {{ d.window_reorder_qty }} units now</strong> for next {{ d.reorder_window_days }} days
+              {% elif d.order_action=='ORDER_SOON' %}Plan to order {{ d.window_reorder_qty }} units soon — demand is rising
+              {% elif d.order_action=='REDUCE_STOCK' %}Don't order more — run promotions to clear stock
+              {% else %}Stock is healthy — no order needed right now{% endif %}</span>
+            </li>
+            <li class="ac-item {% if d.discount_action=='APPLY_DISCOUNT' %}ac-warn{% else %}ac-ok{% endif %}">
+              <div class="ac-item-icon"><i class="bi bi-{% if d.discount_action=='APPLY_DISCOUNT' %}tags-fill{% else %}check-lg{% endif %}"></i></div>
+              <span>{% if d.discount_action=='APPLY_DISCOUNT' %}<strong>Apply {{ d.discount_pct }}% discount</strong> — new price ₹{{ d.discounted_price }}, margin stays {{ d.new_margin_pct }}%
+              {% else %}Keep price at ₹{{ d.current_price }} — no discount needed{% endif %}</span>
+            </li>
+            <li class="ac-item {% if not d.will_sell_before_expiry %}ac-warn{% else %}ac-ok{% endif %}">
+              <div class="ac-item-icon"><i class="bi bi-{% if not d.will_sell_before_expiry %}clock-history{% else %}check-lg{% endif %}"></i></div>
+              <span>{% if not d.will_sell_before_expiry %}<strong>Watch expiry</strong> — {{ d.days_at_risk|round|int }} days of stock may expire unsold ({{ (d.fraction_at_risk*100)|round|int }}%)
+              {% else %}Expiry is fine — stock clears {{ (d.expiry_days-d.days_to_sell)|round|int }} days early{% endif %}</span>
+            </li>
+            <li class="ac-item {% if d.turnover_gap < 0 %}ac-warn{% else %}ac-ok{% endif %}">
+              <div class="ac-item-icon"><i class="bi bi-{% if d.turnover_gap<0 %}exclamation{% else %}check-lg{% endif %}"></i></div>
+              <span>{% if d.turnover_gap<0 %}Stock selling slower than ideal — consider small promotions
+              {% else %}Stock is selling at a healthy pace ✓{% endif %}</span>
+            </li>
+            <li class="ac-item ac-ok">
+              <div class="ac-item-icon"><i class="bi bi-graph-up-arrow"></i></div>
+              <span>Following this advice could improve profit by <strong>+{{ d.profit_impact }}%</strong></span>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="d-flex gap-3 flex-wrap">
+      {%- if shop_id is defined and shop_id and shop_product_id is defined and shop_product_id -%}
+        <a href="{{ url_for('shopkeeper.product_simulate', shop_id=shop_id, product_id=shop_product_id) }}" class="btn-orange btn-lg"><i class="bi bi-sliders me-2"></i>Try What-If Scenarios</a>
+        <a href="{{ url_for('shopkeeper.product_decision', shop_id=shop_id, product_id=shop_product_id) }}" class="btn-outline btn-lg"><i class="bi bi-lightbulb me-2"></i>Back to Advice</a>
+        <a href="{{ url_for('shopkeeper.add_product_to_shop', shop_id=shop_id) }}" class="btn-outline btn-lg"><i class="bi bi-plus-circle me-2"></i>Add Another Product</a>
+      {%- elif shop_product_id is defined and shop_product_id -%}
+        <a href="{{ url_for('shop.simulate', product_id=shop_product_id) }}" class="btn-orange btn-lg"><i class="bi bi-sliders me-2"></i>Try What-If Scenarios</a>
+        <a href="{{ url_for('shop.decision', product_id=shop_product_id) }}" class="btn-outline btn-lg"><i class="bi bi-lightbulb me-2"></i>Back to Advice</a>
+        <a href="{{ url_for('shop.add') }}" class="btn-outline btn-lg"><i class="bi bi-plus-circle me-2"></i>Analyse Another</a>
+      {%- else -%}
+        <a href="{{ url_for('simulate') }}" class="btn-orange btn-lg"><i class="bi bi-sliders me-2"></i>Try What-If Scenarios</a>
+        <a href="{{ url_for('decision') }}" class="btn-outline btn-lg"><i class="bi bi-lightbulb me-2"></i>Back to Advice</a>
+        <a href="{{ url_for('input_data') }}" class="btn-outline btn-lg"><i class="bi bi-plus-circle me-2"></i>Analyse Another</a>
+      {%- endif -%}
+    </div>
+
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function getProductId() {
+  const m = window.location.pathname.match(/\/shops?\/\d+\/products?\/(\d+)|\/shop\/(predict|decision|results|simulate)\/(\d+)/);
+  return m ? (m[1] || m[3]) : null;
+}
+function getShopId() {
+  const m = window.location.pathname.match(/\/shops\/(\d+)/);
+  return m ? m[1] : null;
+}
+function getLLMSummary() {
+  const btn   = document.getElementById('summaryBtn');
+  btn.disabled = true; btn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>Generating…';
+  const panel = document.getElementById('llmSummaryContent');
+  const text  = document.getElementById('llmSummaryText');
+  panel.style.display = 'block';
+  text.innerHTML = '<div class="llm-loading"><span class="typing-dots"><span></span><span></span><span></span></span> AI is reading your analysis…</div>';
+  fetch('/llm/summary', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ product_id: getProductId(), shop_id: getShopId() })
+  }).then(r => r.json()).then(d => {
+    btn.disabled = false; btn.innerHTML = '<i class="bi bi-stars me-1"></i>Refresh Summary';
+    if (d.error) { text.innerHTML = '⚠️ ' + d.error; return; }
+    text.innerHTML = '<div class="llm-narrative">' + formatLLM(d.summary) + '</div>';
+  }).catch(() => {
+    btn.disabled = false; btn.innerHTML = '<i class="bi bi-stars me-1"></i>Generate Summary';
+    text.innerHTML = '⚠️ Could not connect. Check your OPENROUTER_API_KEY.';
+  });
+}
+function getLLMPlan() {
+  const btn   = document.getElementById('planBtn');
+  btn.disabled = true; btn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>Generating…';
+  const panel = document.getElementById('llmSummaryContent');
+  const text  = document.getElementById('llmSummaryText');
+  panel.style.display = 'block';
+  text.innerHTML = '<div class="llm-loading"><span class="typing-dots"><span></span><span></span><span></span></span> Building your 7-day plan…</div>';
+  fetch('/llm/action-plan', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ product_id: getProductId(), shop_id: getShopId() })
+  }).then(r => r.json()).then(d => {
+    btn.disabled = false; btn.innerHTML = '<i class="bi bi-calendar-check me-1"></i>7-Day Action Plan';
+    if (d.error) { text.innerHTML = '⚠️ ' + d.error; return; }
+    text.innerHTML = '<div class="llm-narrative">' + formatLLM(d.plan) + '</div>';
+  }).catch(() => {
+    btn.disabled = false; btn.innerHTML = '<i class="bi bi-calendar-check me-1"></i>7-Day Action Plan';
+    text.innerHTML = '⚠️ Could not connect.';
+  });
+}
+function formatLLM(text) {
+  return text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g,'<em>$1</em>')
+    .replace(/\n\n/g,'</p><p>')
+    .replace(/\n/g,'<br/>');
+}
+document.querySelectorAll('.result-card').forEach((el, i) => {
+  el.style.opacity = '0'; el.style.transform = 'translateY(16px)';
+  setTimeout(() => { el.style.transition = 'all 0.45s ease'; el.style.opacity = '1'; el.style.transform = 'translateY(0)'; }, 80 + i * 100);
+});
+const hf = document.getElementById('healthFill');
+if (hf) { setTimeout(() => { hf.style.transition = 'width 1s ease'; hf.style.width = hf.dataset.w; }, 400); }
+
+new Chart(document.getElementById('csatChart'), {
+  type: 'doughnut',
+  data: {
+    labels: ['Product Available','Price','Meeting Demand','Freshness'],
+    datasets: [{ data: [{{ d.availability_score }},{{ d.price_score }},{{ d.fulfill_score }},{{ d.freshness_score }}],
+      backgroundColor: ['rgba(13,148,136,.75)','rgba(37,99,235,.75)','rgba(249,115,22,.75)','rgba(22,163,74,.75)'],
+      borderColor: ['#0D9488','#2563EB','#F97316','#16A34A'], borderWidth: 2 }]
+  },
+  options: { responsive: true, cutout: '55%',
+    plugins: { legend: { position: 'right', labels: { color: '#7A7068', font: { family: 'Plus Jakarta Sans' }, padding: 10, boxWidth: 12 } },
+               tooltip: { backgroundColor: 'white', titleColor: '#1A1814', bodyColor: '#3D3730', borderColor: '#E8E4DE', borderWidth: 1 } }
+  }
+});
+
+new Chart(document.getElementById('finChart'), {
+  type: 'bar',
+  data: {
+    labels: ['Expected Revenue (30d)','Expected Profit (30d)','Storage Cost (mo)','Money at Risk'],
+    datasets: [{ label: '₹',
+      data: [{{ d.projected_revenue_30d }},{{ d.projected_profit_30d }},{{ d.carrying_cost_30d }},{{ d.at_risk_value }}],
+      backgroundColor: ['rgba(37,99,235,.7)','rgba(22,163,74,.7)','rgba(217,119,6,.7)','rgba(220,38,38,.7)'],
+      borderColor: ['#2563EB','#16A34A','#D97706','#DC2626'],
+      borderWidth: 2, borderRadius: 8 }]
+  },
+  options: { responsive: true,
+    plugins: { legend: { display: false },
+               tooltip: { backgroundColor: 'white', titleColor: '#1A1814', bodyColor: '#3D3730', borderColor: '#E8E4DE', borderWidth: 1,
+                          callbacks: { label: ctx => '₹' + Math.round(ctx.raw).toLocaleString('en-IN') } } },
+    scales: {
+      x: { ticks: { color: '#B0A89E', font: { size: 10 } }, grid: { color: '#F4F2EE' } },
+      y: { ticks: { color: '#B0A89E', callback: v => '₹' + v.toLocaleString('en-IN') }, grid: { color: '#F4F2EE' } }
+    }
+  }
+});
+</script>
+{% endblock %}

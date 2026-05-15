@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}Log In | MerchAI{% endblock %}
+{% block content %}
+<div class="auth-page">
+  <div class="container">
+    <div class="auth-card">
+      <div class="auth-logo">
+        <div class="brand-logo"><i class="bi bi-shop"></i></div>
+        <span class="brand-name">MerchAI</span>
+      </div>
+      <h1 class="auth-title">Welcome back! 👋</h1>
+      <p class="auth-sub">Log in to manage your shop or find products near you</p>
+
+      {% if error %}
+      <div class="auth-err">
+        <i class="bi bi-exclamation-triangle-fill me-2"></i>{{ error }}
+      </div>
+      {% endif %}
+
+      <form method="POST">
+        <div class="auth-field">
+          <label class="form-label">Your email address</label>
+          <div class="auth-input-wrap">
+            <i class="bi bi-envelope-fill auth-field-icon"></i>
+            <input type="email" name="email" class="auth-input"
+                   placeholder="you@example.com"
+                   value="{{ email or '' }}" required autocomplete="email"/>
+          </div>
+        </div>
+
+        <div class="auth-field">
+          <label class="form-label">Your password</label>
+          <div class="auth-input-wrap">
+            <i class="bi bi-lock-fill auth-field-icon"></i>
+            <input type="password" name="password" id="pw" class="auth-input"
+                   placeholder="Your password" required autocomplete="current-password"/>
+            <button type="button" class="auth-eye" onclick="toggle('pw',this)">
+              <i class="bi bi-eye-fill"></i>
+            </button>
+          </div>
+        </div>
+
+        <div class="auth-remember">
+          <input type="checkbox" name="remember" style="accent-color:var(--orange)"/>
+          Keep me logged in for 30 days
+        </div>
+
+        <button type="submit" class="btn-orange auth-btn">
+          <i class="bi bi-box-arrow-in-right me-2"></i>Log In
+        </button>
+      </form>
+
+      <div class="auth-divider"><span>or</span></div>
+
+      <a href="{{ url_for('home') }}" class="btn-outline w-100"
+         style="justify-content:center;margin-bottom:12px">
+        <i class="bi bi-person-dash me-2"></i>Continue as Guest
+      </a>
+
+      <div class="auth-switch" style="margin-bottom:8px">
+        Don't have an account?
+      </div>
+      <div class="d-flex gap-2">
+        <a href="{{ url_for('auth.signup') }}"
+           class="btn-outline" style="flex:1;justify-content:center;font-size:0.85rem">
+          <i class="bi bi-shop me-1"></i>Shopkeeper Sign Up
+        </a>
+        <a href="{{ url_for('auth.customer_signup') }}"
+           class="btn-outline" style="flex:1;justify-content:center;font-size:0.85rem">
+          <i class="bi bi-person-plus me-1"></i>Customer Sign Up
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function toggle(id, btn) {
+  const el = document.getElementById(id);
+  el.type = el.type === 'password' ? 'text' : 'password';
+  btn.innerHTML = el.type === 'password'
+    ? '<i class="bi bi-eye-fill"></i>'
+    : '<i class="bi bi-eye-slash-fill"></i>';
+}
+</script>
+{% endblock %}

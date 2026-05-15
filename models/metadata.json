@@ -1,0 +1,90 @@
+{
+  "trained_on": "2026-05-06 17:43",
+  "records": 80000,
+  "demand_model": {
+    "mae": 3.888,
+    "rmse": 6.603,
+    "r2": 0.9951,
+    "mape_pct": 6.6
+  },
+  "markdown_model": {
+    "accuracy": 0.9991,
+    "f1_weighted": 0.9991
+  },
+  "health_model": {
+    "mae": 0.279,
+    "rmse": 0.43,
+    "r2": 0.996
+  },
+  "categories": [
+    "Fashion",
+    "Grocery",
+    "Electronics",
+    "FMCG",
+    "Seasonal"
+  ],
+  "demand_features": [
+    "v_week",
+    "v_month",
+    "blended_vel",
+    "adj_velocity",
+    "momentum",
+    "season_factor",
+    "festival_factor",
+    "category_enc",
+    "month",
+    "week_of_year",
+    "is_festival",
+    "is_weekend",
+    "price_ratio",
+    "margin_pct",
+    "lead_time",
+    "demand_cv",
+    "log_stock",
+    "sdr"
+  ],
+  "markdown_features": [
+    "days_to_sell",
+    "expiry_days",
+    "days_excess",
+    "fraction_at_risk",
+    "will_sell_before_expiry",
+    "sdr",
+    "stock_weeks",
+    "adj_velocity",
+    "momentum",
+    "category_enc",
+    "margin_pct",
+    "disc_potential",
+    "price_ratio",
+    "festival_factor",
+    "season_factor"
+  ],
+  "health_features": [
+    "sdr",
+    "stock_weeks",
+    "cover_vs_lt",
+    "fraction_at_risk",
+    "will_sell_before_expiry",
+    "days_to_sell",
+    "expiry_days",
+    "days_excess",
+    "adj_velocity",
+    "momentum",
+    "price_ratio",
+    "margin_pct",
+    "category_enc",
+    "season_factor",
+    "festival_factor",
+    "demand_cv",
+    "lead_time"
+  ],
+  "elasticity_features": [
+    "price_vs_comp",
+    "season_factor",
+    "festival_factor",
+    "stock_weeks",
+    "margin_pct",
+    "momentum"
+  ]
+}

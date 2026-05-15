@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>{% block title %}MerchAI — Smart Retail Helper{% endblock %}</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet"/>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet"/>
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Plus+Jakarta+Sans:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}"/>
+<!--  <link rel="stylesheet" href="{{ url_for('static', filename='style1.css') }}"/>-->
+</head>
+<body>
+
+<!-- TOP NAV -->
+<nav class="navbar navbar-expand-lg">
+  <div class="container-xl">
+    <a class="navbar-brand" href="{{ url_for('home') }}">
+      <div class="brand-logo"><i class="bi bi-shop"></i></div>
+      <span class="brand-name">MerchAI</span>
+      <span class="brand-tagline d-none d-sm-inline">Smart Retail</span>
+    </a>
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#nav">
+      <i class="bi bi-list" style="font-size:1.4rem;color:var(--text-body)"></i>
+    </button>
+    <div class="collapse navbar-collapse" id="nav">
+
+      {% set role = session.get('user_role', '') %}
+
+      {% if role == 'customer' %}
+      <!-- CUSTOMER NAV -->
+      <ul class="navbar-nav mx-auto gap-1">
+        <li class="nav-item">
+          <a class="nav-link {% if request.endpoint and 'customer' in request.endpoint %}active{% endif %}"
+             href="{{ url_for('customer.home') }}">
+            <i class="bi bi-geo-alt me-1"></i>Nearby Shops
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link" href="{{ url_for('customer.browse_shops') }}">
+            <i class="bi bi-grid me-1"></i>All Shops
+          </a>
+        </li>
+      </ul>
+
+      {% elif role == 'shopkeeper' %}
+      <!-- SHOPKEEPER NAV -->
+      <ul class="navbar-nav mx-auto gap-1">
+        {% set nav_links = [
+          ('shopkeeper.my_shops',  'bi-shop-window',      'My Shops'),
+          ('input_data',           'bi-clipboard-plus',   'Analyse Product'),
+          ('predict',              'bi-graph-up',         'Forecast'),
+          ('decision',             'bi-lightbulb',        'What to Do'),
+          ('results',              'bi-bar-chart',        'Results'),
+          ('simulate',             'bi-sliders',          'What-If'),
+        ] %}
+        {% for ep, icon, label in nav_links %}
+        <li class="nav-item">
+          <a class="nav-link {% if request.endpoint == ep %}active{% endif %}"
+             href="{{ url_for(ep) }}">
+            <i class="bi {{ icon }} me-1"></i>{{ label }}
+          </a>
+        </li>
+        {% endfor %}
+      </ul>
+
+      {% else %}
+      <!-- GUEST NAV -->
+      <ul class="navbar-nav mx-auto gap-1">
+        {% set nav_links = [
+          ('home',       'bi-house',           'Home'),
+          ('input_data', 'bi-clipboard-plus',  'Analyse Product'),
+          ('predict',    'bi-graph-up',        'Forecast'),
+          ('decision',   'bi-lightbulb',       'What to Do'),
+          ('results',    'bi-bar-chart',       'Results'),
+          ('simulate',   'bi-sliders',         'What-If'),
+        ] %}
+        {% for ep, icon, label in nav_links %}
+        <li class="nav-item">
+          <a class="nav-link {% if request.endpoint == ep %}active{% endif %}"
+             href="{{ url_for(ep) }}">
+            <i class="bi {{ icon }} me-1"></i>{{ label }}
+          </a>
+        </li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+
+      <div class="d-flex align-items-center gap-2 mt-3 mt-lg-0">
+        {% if not session.get('user_id') %}
+        <a class="btn-nav-reset" href="{{ url_for('reset') }}">
+          <i class="bi bi-arrow-clockwise me-1"></i>Start Over
+        </a>
+        {% endif %}
+
+        {% if session.get('user_id') %}
+        <div class="dropdown">
+          <a class="btn-user dropdown-toggle" data-bs-toggle="dropdown" href="#">
+            <div class="user-avatar">{{ session.get('user_name','U')[0].upper() }}</div>
+            <span class="d-none d-md-inline">{{ session.get('user_name','').split()[0] }}</span>
+          </a>
+          <ul class="dropdown-menu dropdown-menu-end user-dd">
+            <li class="dd-user-info">
+              <div class="dd-name">{{ session.get('user_name') }}</div>
+              <div class="dd-email">{{ session.get('user_email') }}</div>
+              <div style="font-size:0.65rem;margin-top:3px;padding:2px 7px;display:inline-block;
+                          border-radius:var(--r-pill);font-weight:700;
+                          background:{% if role=='customer' %}var(--teal-light){% else %}var(--orange-light){% endif %};
+                          color:{% if role=='customer' %}var(--teal){% else %}var(--orange){% endif %}">
+                {{ '🛍️ Customer' if role=='customer' else '🏪 Shopkeeper' }}
+              </div>
+            </li>
+            <li><hr class="dropdown-divider"/></li>
+
+            {% if role == 'customer' %}
+            <li><a class="dropdown-item" href="{{ url_for('customer.home') }}">
+              <i class="bi bi-geo-alt me-2"></i>Nearby Shops
+            </a></li>
+            <li><a class="dropdown-item" href="{{ url_for('customer.browse_shops') }}">
+              <i class="bi bi-grid me-2"></i>Browse All Shops
+            </a></li>
+            {% else %}
+            <li><a class="dropdown-item" href="{{ url_for('shopkeeper.my_shops') }}">
+              <i class="bi bi-shop-window me-2"></i>My Shops
+            </a></li>
+            <li><a class="dropdown-item" href="{{ url_for('shop.dashboard') }}">
+              <i class="bi bi-grid-3x3-gap me-2"></i>Legacy Products
+            </a></li>
+            <li><a class="dropdown-item" href="{{ url_for('shop.add') }}">
+              <i class="bi bi-plus-circle me-2"></i>Add Product
+            </a></li>
+            {% endif %}
+
+            <li><hr class="dropdown-divider"/></li>
+            <li><a class="dropdown-item dd-logout" href="{{ url_for('auth.logout') }}">
+              <i class="bi bi-box-arrow-right me-2"></i>Log Out
+            </a></li>
+          </ul>
+        </div>
+        {% else %}
+        <a class="btn-nav-login"  href="{{ url_for('auth.login') }}">Log In</a>
+        <a class="btn-nav-signup" href="{{ url_for('auth.signup') }}">Sign Up Free</a>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</nav>
+
+<!-- STEP PROGRESS BAR — only for shopkeeper / guest analysis flow -->
+{% if session.get('user_role', '') != 'customer' %}
+<div class="step-bar">
+  <div class="container-xl">
+    <div class="step-bar-inner">
+      {% set steps = [
+        ('input_data','1','Enter Details'),
+        ('predict',   '2','See Forecast'),
+        ('decision',  '3','Get Advice'),
+        ('results',   '4','View Results'),
+        ('simulate',  '5','What-If'),
+      ] %}
+      {% for ep, num, label in steps %}
+      <div class="step-item {% if request.endpoint == ep %}active{% endif %}">
+        <div class="step-icon">{{ num }}</div>
+        <span class="d-none d-sm-inline">{{ label }}</span>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<main class="main-content">
+  <!-- Flash messages -->
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    <div class="flash-wrap">
+      <div class="container-xl">
+        {% for cat, msg in messages %}
+        <div class="flash-msg flash-{{ cat }}">
+          <div class="d-flex align-items-center gap-2">
+            {% if cat == 'success' %}<i class="bi bi-check-circle-fill"></i>
+            {% elif cat == 'danger' %}<i class="bi bi-exclamation-triangle-fill"></i>
+            {% elif cat == 'warning' %}<i class="bi bi-exclamation-circle-fill"></i>
+            {% else %}<i class="bi bi-info-circle-fill"></i>{% endif %}
+            {{ msg }}
+          </div>
+          <button class="flash-close" onclick="this.parentElement.remove()">
+            <i class="bi bi-x-lg"></i>
+          </button>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+  {% endwith %}
+
+  {% block content %}{% endblock %}
+</main>
+
+<footer class="site-footer">
+  <div class="container-xl">
+    <div class="footer-inner">
+      <div class="d-flex align-items-center gap-2">
+        <div class="brand-logo" style="width:28px;height:28px;font-size:0.8rem">
+          <i class="bi bi-shop"></i>
+        </div>
+        <strong>MerchAI</strong>
+      </div>
+      <span class="footer-sep">·</span>
+      <span>Technoverse Hackathon 2026</span>
+      <span class="footer-sep">·</span>
+      <span>Cognizant</span>
+      <span class="footer-sep">·</span>
+      <span>AI-Powered Retail Assistant</span>
+    </div>
+  </div>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+{% block scripts %}{% endblock %}
+
+<!-- ═══════════════════════════════════════════════════════
+     MERCH AI SHOPKEEPER CHAT WIDGET
+     Only shown for shopkeeper/guest — customer gets shop-specific one
+═══════════════════════════════════════════════════════ -->
+{% if session.get('user_role', '') != 'customer' %}
+<div id="chatWidget">
+  <button id="chatToggle" onclick="toggleChat()" title="Ask MerchAI Assistant">
+    <i class="bi bi-chat-dots-fill" id="chatIcon"></i>
+    <span class="chat-badge" id="chatBadge">AI</span>
+  </button>
+
+  <div id="chatPanel" class="chat-panel">
+    <div class="chat-header">
+      <div class="chat-header-left">
+        <div class="chat-avatar"><i class="bi bi-cpu-fill"></i></div>
+        <div>
+          <div class="chat-title">MerchAI Assistant</div>
+          <div class="chat-subtitle" id="chatSubtitle">Ask me about your products</div>
+        </div>
+      </div>
+      <div class="d-flex align-items-center gap-2">
+        <button class="chat-icon-btn" onclick="clearChat()" title="Clear chat">
+          <i class="bi bi-trash3"></i>
+        </button>
+        <button class="chat-icon-btn" onclick="toggleChat()" title="Close">
+          <i class="bi bi-x-lg"></i>
+        </button>
+      </div>
+    </div>
+
+    <div id="chatMessages" class="chat-messages">
+      <div class="chat-msg chat-msg-ai">
+        <div class="chat-bubble">
+          👋 Hi! I'm your MerchAI assistant. I can see the analysis for your current product.<br/><br/>
+          Try asking:<br/>
+          • "Why is a discount recommended?"<br/>
+          • "How many units should I order?"<br/>
+          • "What's my biggest risk right now?"
+        </div>
+      </div>
+    </div>
+
+    <div class="chat-quick-btns" id="quickBtns">
+      <button class="chat-quick" onclick="quickAsk('Give me a quick summary of this product')">📊 Quick Summary</button>
+      <button class="chat-quick" onclick="quickAsk('What should I do right now?')">💡 What to Do</button>
+      <button class="chat-quick" onclick="quickAsk('What is my biggest risk?')">⚠️ Main Risk</button>
+      <button class="chat-quick" onclick="quickAsk('Make me a 7-day action plan')">📅 Action Plan</button>
+    </div>
+
+    <div class="chat-input-row">
+      <input type="text" id="chatInput" class="chat-input"
+             placeholder="Ask anything…"
+             onkeydown="if(event.key==='Enter') sendChat()"/>
+      <button class="chat-send" onclick="sendChat()" id="chatSendBtn">
+        <i class="bi bi-send-fill"></i>
+      </button>
+    </div>
+
+    <div class="chat-footer">
+      Powered by AI · MerchAI v6
+    </div>
+  </div>
+</div>
+
+<script>
+let chatOpen    = false;
+let chatHistory = [];
+let isStreaming = false;
+
+function getProductId() {
+  const m = window.location.pathname.match(/\/shop(?:keeper)?\/.*?\/(\d+)/);
+  return m ? m[1] : null;
+}
+function getShopId() {
+  const m = window.location.pathname.match(/shops\/(\d+)/);
+  return m ? m[1] : null;
+}
+
+function toggleChat() {
+  chatOpen = !chatOpen;
+  const panel = document.getElementById('chatPanel');
+  const icon  = document.getElementById('chatIcon');
+  const badge = document.getElementById('chatBadge');
+  panel.classList.toggle('chat-panel-open', chatOpen);
+  icon.className  = chatOpen ? 'bi bi-x-lg' : 'bi bi-chat-dots-fill';
+  badge.style.display = chatOpen ? 'none' : 'flex';
+  if (chatOpen) setTimeout(() => document.getElementById('chatInput').focus(), 200);
+}
+
+function quickAsk(text) {
+  document.getElementById('chatInput').value = text;
+  sendChat();
+}
+
+function sendChat() {
+  if (isStreaming) return;
+  const input = document.getElementById('chatInput');
+  const msg   = input.value.trim();
+  if (!msg) return;
+  input.value = '';
+  appendUserMsg(msg);
+  streamResponse(msg);
+  document.getElementById('quickBtns').style.display = 'none';
+}
+
+function appendUserMsg(text) {
+  const el  = document.createElement('div');
+  el.className = 'chat-msg chat-msg-user';
+  el.innerHTML = `<div class="chat-bubble">${escHtml(text)}</div>`;
+  document.getElementById('chatMessages').appendChild(el);
+  scrollChat();
+}
+
+function streamResponse(userMsg) {
+  isStreaming = true;
+  const sendBtn = document.getElementById('chatSendBtn');
+  sendBtn.disabled = true;
+  sendBtn.innerHTML = '<i class="bi bi-hourglass-split"></i>';
+
+  const container = document.getElementById('chatMessages');
+  const el = document.createElement('div');
+  el.className = 'chat-msg chat-msg-ai';
+  el.innerHTML = '<div class="chat-bubble" id="currentAIMsg"><span class="typing-dots"><span></span><span></span><span></span></span></div>';
+  container.appendChild(el);
+  scrollChat();
+
+  const bubble = document.getElementById('currentAIMsg');
+  let fullText = '';
+
+  fetch('/llm/chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      message:    userMsg,
+      history:    chatHistory,
+      product_id: getProductId(),
+      shop_id:    getShopId()
+    })
+  }).then(resp => {
+    const reader  = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer    = '';
+
+    function read() {
+      reader.read().then(({ done, value }) => {
+        if (done) { finalize(); return; }
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop();
+        for (const line of lines) {
+          if (!line.startsWith('data:')) continue;
+          const data = line.slice(5).trim();
+          if (data === '[DONE]') { finalize(); return; }
+          const token = data.replace(/\\n/g, '\n');
+          fullText += token;
+          bubble.innerHTML = formatMD(fullText) + '<span class="cursor-blink">▊</span>';
+          scrollChat();
+        }
+        read();
+      });
+    }
+    read();
+
+    function finalize() {
+      isStreaming = false;
+      sendBtn.disabled = false;
+      sendBtn.innerHTML = '<i class="bi bi-send-fill"></i>';
+      bubble.removeAttribute('id');
+      bubble.innerHTML = formatMD(fullText);
+      chatHistory.push({ role: 'user',      content: userMsg  });
+      chatHistory.push({ role: 'assistant', content: fullText });
+      if (chatHistory.length > 20) chatHistory = chatHistory.slice(-20);
+      scrollChat();
+    }
+  }).catch(() => {
+    isStreaming = false;
+    sendBtn.disabled = false;
+    sendBtn.innerHTML = '<i class="bi bi-send-fill"></i>';
+    bubble.removeAttribute('id');
+    bubble.innerHTML = '⚠️ Connection error. Is your OPENROUTER_API_KEY set?';
+  });
+}
+
+function clearChat() {
+  chatHistory = [];
+  document.getElementById('chatMessages').innerHTML =
+    '<div class="chat-msg chat-msg-ai"><div class="chat-bubble">Chat cleared! 😊 What would you like to know?</div></div>';
+  document.getElementById('quickBtns').style.display = 'flex';
+}
+
+function scrollChat() {
+  const c = document.getElementById('chatMessages');
+  c.scrollTop = c.scrollHeight;
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function formatMD(text) {
+  return text
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g,'<em>$1</em>')
+    .replace(/\n\n/g,'</p><p>')
+    .replace(/\n•\s/g,'<br/>• ')
+    .replace(/\n-\s/g,'<br/>• ')
+    .replace(/\n(\d+)\.\s/g,'<br/>$1. ')
+    .replace(/\n/g,'<br/>');
+}
+</script>
+{% endif %}
+
+</body>
+</html>

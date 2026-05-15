@@ -1,0 +1,284 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit Product' if mode=='edit' else 'Add Product' }} | {{ shop.shop_name }} | MerchAI{% endblock %}
+{% block content %}
+
+<div class="page-hero">
+  <div class="container-xl">
+    <div class="d-flex align-items-center gap-4">
+      <div class="page-hero-icon"
+           style="background:linear-gradient(135deg,{% if mode=='edit' %}var(--teal),#0F766E{% else %}var(--orange),var(--orange-dark){% endif %});color:white">
+        <i class="bi bi-{% if mode=='edit' %}pencil-fill{% else %}plus-circle-fill{% endif %}"></i>
+      </div>
+      <div>
+        <h1 class="page-hero-title">{{ '✏️ Edit Product' if mode=='edit' else '➕ Add Product' }}</h1>
+        <p class="page-hero-sub">
+          Shop: <strong>{{ shop.shop_name }}</strong> &nbsp;·&nbsp;
+          {% if mode=='edit' %}Changes re-run AI analysis automatically
+          {% else %}AI analysis runs immediately after saving{% endif %}
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<section class="page-section">
+  <div class="container-xl">
+    <div class="row g-4">
+      <div class="col-lg-8">
+        <form method="POST">
+
+          <!-- Product Basics -->
+          <div class="card-white mb-4">
+            <div class="card-section-title"><i class="bi bi-box-seam-fill"></i>Product Details</div>
+            <div class="row g-3">
+              <div class="col-md-6">
+                <label class="form-label">Product name <span class="req-star">*</span></label>
+                <input type="text" class="friendly-input" name="product_name"
+                       value="{{ form_data.get('product_name','') }}"
+                       placeholder="e.g. Amul Butter 500g" required/>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Brand name <em class="text-muted">(optional)</em></label>
+                <input type="text" class="friendly-input" name="brand_name"
+                       value="{{ form_data.get('brand_name','') }}"
+                       placeholder="e.g. Amul, Samsung, Nestlé"/>
+                <div class="form-hint">Shown to customers in the shop view</div>
+              </div>
+              <div class="col-md-4">
+                <label class="form-label">Product category</label>
+                <select class="friendly-select" name="category">
+                  {% for c in categories %}
+                  <option value="{{ c }}" {% if form_data.get('category','FMCG')==c %}selected{% endif %}>
+                    {{ {'Fashion':'👗 Fashion','Grocery':'🥗 Grocery','Electronics':'📱 Electronics','FMCG':'🧴 FMCG','Seasonal':'❄️ Seasonal'}[c] }}
+                  </option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="col-md-4">
+                <label class="form-label">Selling price (₹) <span class="req-star">*</span></label>
+                <div class="input-group">
+                  <span class="input-group-text">₹</span>
+                  <input type="number" class="friendly-input" name="current_price" id="sellPrice"
+                         value="{{ form_data.get('current_price','') }}"
+                         placeholder="500" min="1" step="0.01" required/>
+                </div>
+              </div>
+              <div class="col-md-4">
+                <label class="form-label">Your cost price (₹) <span class="req-star">*</span></label>
+                <div class="input-group">
+                  <span class="input-group-text">₹</span>
+                  <input type="number" class="friendly-input" name="cost_price" id="costPrice"
+                         value="{{ form_data.get('cost_price','') }}"
+                         placeholder="300" min="1" step="0.01" required/>
+                </div>
+                <div class="form-hint" id="marginHint">Enter both prices to see profit</div>
+              </div>
+              <div class="col-md-4">
+                <label class="form-label">Competitor price (₹) <em class="text-muted">(optional)</em></label>
+                <div class="input-group">
+                  <span class="input-group-text">₹</span>
+                  <input type="number" class="friendly-input" name="competitor_price"
+                         value="{{ form_data.get('competitor_price','') }}"
+                         placeholder="0" min="0" step="0.01"/>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Customer Visibility -->
+          <div class="card-white mb-4">
+            <div class="card-section-title"><i class="bi bi-eye-fill"></i>Customer Visibility</div>
+            <div class="row g-3 align-items-center">
+              <div class="col-md-8">
+                <label class="form-label">Show this product to customers?</label>
+                <div class="d-flex gap-3 mt-1">
+                  <label class="d-flex align-items-center gap-2" style="cursor:pointer;font-size:0.9rem">
+                    <input type="radio" name="is_visible" value="1"
+                           {% if form_data.get('is_visible', 1)|int == 1 %}checked{% endif %}
+                           style="accent-color:var(--teal);width:16px;height:16px"/>
+                    <span><i class="bi bi-eye-fill me-1" style="color:var(--teal)"></i>
+                    <strong>Visible</strong> — customers can see this product</span>
+                  </label>
+                  <label class="d-flex align-items-center gap-2" style="cursor:pointer;font-size:0.9rem">
+                    <input type="radio" name="is_visible" value="0"
+                           {% if form_data.get('is_visible', 1)|int == 0 %}checked{% endif %}
+                           style="accent-color:var(--red);width:16px;height:16px"/>
+                    <span><i class="bi bi-eye-slash-fill me-1" style="color:var(--text-muted)"></i>
+                    <strong>Hidden</strong> — only you can see this</span>
+                  </label>
+                </div>
+                <div class="form-hint mt-1">
+                  Hidden products stay hidden until you manually unhide them. Hidden items never appear in customer view.
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Sales -->
+          <div class="card-white mb-4">
+            <div class="card-section-title"><i class="bi bi-graph-up-arrow"></i>Recent Sales</div>
+            <div class="row g-3">
+              <div class="col-md-4">
+                <label class="form-label">Units sold — last 7 days</label>
+                <input type="number" class="friendly-input" name="sales_last_week"
+                       value="{{ form_data.get('sales_last_week','') }}"
+                       placeholder="40" min="0" required/>
+              </div>
+              <div class="col-md-4">
+                <label class="form-label">Units sold — last 30 days</label>
+                <input type="number" class="friendly-input" name="sales_last_month"
+                       value="{{ form_data.get('sales_last_month','') }}"
+                       placeholder="160" min="0" required/>
+              </div>
+              <div class="col-md-4">
+                <label class="form-label">Sales steadiness</label>
+                <select class="friendly-select" name="demand_variability">
+                  {% for v,label in [('Low','😌 Very steady'),('Medium','😐 Normal'),('High','😬 Unpredictable')] %}
+                  <option value="{{ v }}" {% if form_data.get('demand_variability','Medium')==v %}selected{% endif %}>{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="col-md-4">
+                <label class="form-label">Current season</label>
+                <select class="friendly-select" name="season_factor">
+                  {% for val,label in [('0.6','🥶 Very slow'),('0.8','😴 Slow'),('1.0','😊 Normal'),('1.2','📈 Picking up'),('1.5','🎉 Festival'),('2.0','🚀 Mega sale')] %}
+                  <option value="{{ val }}" {% if (form_data.get('season_factor',1.0)|string)==val %}selected{% endif %}>{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <!-- Stock -->
+          <div class="card-white mb-4">
+            <div class="card-section-title"><i class="bi bi-boxes"></i>Stock & Inventory</div>
+            <div class="row g-3">
+              <div class="col-md-4">
+                <label class="form-label">Units in stock now</label>
+                <input type="number" class="friendly-input" name="stock"
+                       value="{{ form_data.get('stock','') }}" placeholder="80" min="0" required/>
+              </div>
+              <div class="col-md-4">
+                <label class="form-label">Days until expiry</label>
+                <input type="number" class="friendly-input" name="expiry_days"
+                       value="{{ form_data.get('expiry_days','') }}" placeholder="30" min="1" required/>
+                <div class="form-hint">Use 365 if it doesn't expire</div>
+              </div>
+              <div class="col-md-4">
+                <label class="form-label">Lead time (days to restock)</label>
+                <input type="number" class="friendly-input" name="lead_time_days"
+                       value="{{ form_data.get('lead_time_days',3) }}" placeholder="3" min="1" required/>
+              </div>
+              <div class="col-md-4">
+                <label class="form-label">Reorder window <span class="reorder-new-tag">Custom</span></label>
+                <div class="input-group">
+                  <input type="number" class="friendly-input" name="reorder_window_days"
+                         id="reorderWin" value="{{ form_data.get('reorder_window_days',7) }}" min="1" max="90"/>
+                  <span class="input-group-text">days</span>
+                </div>
+                <div class="form-hint" id="winHint">Plan for next <strong>{{ form_data.get('reorder_window_days',7) }} days</strong></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Advanced Settings -->
+          <div class="card-white mb-4">
+            <div class="card-section-title"><i class="bi bi-gear-fill"></i>Business Settings</div>
+            <div class="row g-3">
+              <div class="col-md-4">
+                <label class="form-label">Yearly storage cost (%)</label>
+                <div class="input-group">
+                  <input type="number" class="friendly-input" name="holding_cost_pct"
+                         value="{{ form_data.get('holding_cost_pct',25) }}" min="1" max="80"/>
+                  <span class="input-group-text">%</span>
+                </div>
+              </div>
+              <div class="col-md-4">
+                <label class="form-label">Cost per order (₹)</label>
+                <div class="input-group">
+                  <span class="input-group-text">₹</span>
+                  <input type="number" class="friendly-input" name="order_cost"
+                         value="{{ form_data.get('order_cost',500) }}" min="0"/>
+                </div>
+              </div>
+              <div class="col-md-4">
+                <label class="form-label">Stock reliability</label>
+                <select class="friendly-select" name="target_service_level">
+                  {% for val,label in [('90','90% Basic'),('95','95% Standard'),('97','97% High'),('99','99% Critical')] %}
+                  <option value="{{ val }}" {% if (form_data.get('target_service_level',95)|string)==val %}selected{% endif %}>{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div class="d-flex gap-3">
+            <button type="submit" class="btn-orange btn-lg flex-grow-1">
+              <i class="bi bi-cpu-fill me-2"></i>
+              {{ 'Save & Re-analyse' if mode=='edit' else 'Save & Run AI Analysis' }}
+            </button>
+            <a href="{{ url_for('shopkeeper.shop_products', shop_id=shop.id) }}" class="btn-outline btn-lg">
+              <i class="bi bi-x-circle me-1"></i>Cancel
+            </a>
+          </div>
+        </form>
+      </div>
+
+      <div class="col-lg-4">
+        <div class="sidebar-box mb-3">
+          <div class="sidebar-title">🏪 Adding to: {{ shop.shop_name }}</div>
+          <p style="font-size:0.875rem;color:var(--text-muted);line-height:1.6">
+            This product will belong only to <strong>{{ shop.shop_name }}</strong>.
+            It will not appear in any of your other shops.
+            Each shop's data is completely separate.
+          </p>
+        </div>
+        <div class="sidebar-box mb-3">
+          <div class="sidebar-title">👁️ Visibility explained</div>
+          <ul class="guide-list">
+            <li><i class="bi bi-check-circle-fill text-success"></i>Visible items appear in the customer-facing shop view</li>
+            <li><i class="bi bi-check-circle-fill text-success"></i>Hidden items only appear in your shopkeeper dashboard</li>
+            <li><i class="bi bi-check-circle-fill text-success"></i>You can toggle visibility anytime from the product list</li>
+            <li><i class="bi bi-check-circle-fill text-success"></i>By default all new products are visible</li>
+          </ul>
+        </div>
+        <div class="sidebar-box">
+          <div class="sidebar-title">✅ Quick Tips</div>
+          <ul class="guide-list">
+            <li><i class="bi bi-check-circle-fill text-success"></i>Cost must be less than selling price</li>
+            <li><i class="bi bi-check-circle-fill text-success"></i>Use 365 for non-expiring products</li>
+            <li><i class="bi bi-check-circle-fill text-success"></i>Brand name is optional but shown to customers</li>
+            <li><i class="bi bi-check-circle-fill text-success"></i>Competitor price improves AI pricing advice</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function updateMargin() {
+  const sp = parseFloat(document.getElementById('sellPrice')?.value) || 0;
+  const cp = parseFloat(document.getElementById('costPrice')?.value) || 0;
+  const el = document.getElementById('marginHint');
+  if (!el) return;
+  if (sp > 0 && cp > 0 && cp < sp)
+    el.innerHTML = `<span style="color:var(--green)">✓ Profit: ${((sp-cp)/sp*100).toFixed(1)}% (₹${(sp-cp).toFixed(0)}/unit)</span>`;
+  else if (cp >= sp && cp > 0)
+    el.innerHTML = `<span style="color:var(--red)">⚠ Cost must be less than selling price</span>`;
+  else
+    el.textContent = 'Enter both prices to see profit';
+}
+document.getElementById('sellPrice')?.addEventListener('input', updateMargin);
+document.getElementById('costPrice')?.addEventListener('input', updateMargin);
+updateMargin();
+
+document.getElementById('reorderWin')?.addEventListener('input', function() {
+  const v = Math.max(1, Math.min(90, parseInt(this.value) || 7));
+  const el = document.getElementById('winHint');
+  if (el) el.innerHTML = `Plan for next <strong>${v} day${v===1?'':'s'}</strong>`;
+});
+</script>
+{% endblock %}

@@ -1,0 +1,278 @@
+{% extends "base.html" %}
+{% block title %}What-If Simulator | MerchAI{% endblock %}
+{% block content %}
+
+<div class="page-hero">
+  <div class="container-xl">
+    <div class="d-flex align-items-center gap-4">
+      <div class="page-hero-icon" style="background:linear-gradient(135deg,var(--purple),#6D28D9);color:white">
+        <i class="bi bi-sliders"></i>
+      </div>
+      <div>
+        <h1 class="page-hero-title">🔮 What-If Simulator</h1>
+        <p class="page-hero-sub">Test different price, stock, and season options for <strong>{{ product_name }}</strong> — before you commit</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<section class="page-section">
+  <div class="container-xl">
+    <div class="row g-4">
+
+      <!-- FORM -->
+      <div class="col-lg-5">
+        <div class="card-white mb-3">
+          <div class="card-section-title"><i class="bi bi-toggles2"></i>Set Up Your Scenarios</div>
+
+          {%- if shop_id is defined and shop_id and shop_product_id is defined and shop_product_id -%}
+            {%- set form_action = url_for('shopkeeper.product_simulate', shop_id=shop_id, product_id=shop_product_id) -%}
+          {%- elif shop_product_id is defined and shop_product_id -%}
+            {%- set form_action = url_for('shop.simulate', product_id=shop_product_id) -%}
+          {%- else -%}
+            {%- set form_action = url_for('simulate') -%}
+          {%- endif -%}
+
+          <form method="POST" action="{{ form_action }}">
+
+            <!-- Baseline -->
+            <div class="baseline-box mb-4">
+              <div class="bl-title">📌 Your Current Situation (Baseline)</div>
+              {% for label, val in [
+                ('Selling Price','₹' + d.current_price|string),
+                ('Stock',d.stock|int|string + ' units'),
+                ('Overall Health',d.health_score|string + '/100'),
+                ('Customer Score',d.csat_score|string + '/100'),
+                ('Profit (30d)','₹' + '{:,}'.format(d.projected_profit_30d|int)),
+              ] %}
+              <div class="bl-row"><span>{{ label }}</span><strong>{{ val }}</strong></div>
+              {% endfor %}
+            </div>
+
+            {% for sn, color, default_label, dp, ds, dseason in [
+              ('1','#2563EB','Lower price by 10%',d.current_price*0.9|round(0)|int,d.stock|int,'1.0'),
+              ('2','#0D9488','Buy 50% more stock',d.current_price,d.stock*1.5|round(0)|int,'1.0'),
+              ('3','#7C3AED','Festival season boost',d.current_price,d.stock|int,'1.5'),
+            ] %}
+            <div class="scenario-block mb-3" style="border-left-color:{{ color }}">
+              <div class="sc-title-row">
+                <div class="sc-dot" style="background:{{ color }}">{{ sn }}</div>
+                <input type="text" name="s{{ sn }}_label" class="sc-label-input" value="{{ default_label }}" placeholder="Scenario name"/>
+              </div>
+              <div class="row g-2">
+                <div class="col-4">
+                  <label class="sim-label">Price (₹)</label>
+                  <input type="number" name="s{{ sn }}_price" class="friendly-input" style="font-size:0.85rem;padding:7px 10px" value="{{ dp }}" step="0.01"/>
+                </div>
+                <div class="col-4">
+                  <label class="sim-label">Stock (units)</label>
+                  <input type="number" name="s{{ sn }}_stock" class="friendly-input" style="font-size:0.85rem;padding:7px 10px" value="{{ ds }}" step="1"/>
+                </div>
+                <div class="col-4">
+                  <label class="sim-label">Season</label>
+                  <select name="s{{ sn }}_season" class="friendly-select" style="font-size:0.82rem;padding:7px 10px">
+                    {% for val, label in [('0.6','😴 Very slow'),('0.8','🥱 Slow'),('1.0','😊 Normal'),('1.2','📈 Busy'),('1.5','🎉 Festival'),('2.0','🚀 Mega sale')] %}
+                    <option value="{{ val }}" {% if val == dseason %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                  </select>
+                </div>
+              </div>
+            </div>
+            {% endfor %}
+
+            <button type="submit" class="btn-orange w-100" style="justify-content:center">
+              <i class="bi bi-play-circle-fill me-2"></i>Run My Simulation
+            </button>
+          </form>
+        </div>
+
+        <div class="card-white">
+          <div class="sidebar-title">💡 Ideas to Try</div>
+          <ul class="guide-list">
+            <li>💰 <strong>Cut price 10–20%</strong> — does profit go up because you sell more?</li>
+            <li>📦 <strong>Increase stock 50%</strong> — does customer score improve?</li>
+            <li>🎉 <strong>Festival season</strong> — when should you pre-stock?</li>
+            <li>😴 <strong>Slow season</strong> — how much does health drop?</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- RESULTS -->
+      <div class="col-lg-7">
+        {% if sim_results %}
+
+        <div class="row g-3 mb-4">
+          {% set dot_colors = ['#B0A89E','#2563EB','#0D9488','#7C3AED'] %}
+          {% for sc in sim_results %}
+          <div class="col-sm-6">
+            <div class="sim-result-card {% if loop.first %}sim-current{% endif %}">
+              <div class="src-header">
+                <div class="src-dot" style="background:{{ dot_colors[loop.index0] }}"></div>
+                <div class="src-label">{{ sc.label }}</div>
+                {% if loop.first %}<div class="src-now">Current</div>{% endif %}
+              </div>
+              <div class="src-grid">
+                <div class="src-metric"><span>Price</span><strong>₹{{ sc.price }}</strong></div>
+                <div class="src-metric"><span>Stock</span><strong>{{ sc.stock|int }} units</strong></div>
+                <div class="src-metric"><span>Revenue (30d)</span><strong style="color:var(--teal)">₹{{ '{:,}'.format(sc.revenue_30d|int) }}</strong></div>
+                <div class="src-metric"><span>Profit (30d)</span><strong style="color:var(--blue)">₹{{ '{:,}'.format(sc.profit_30d|int) }}</strong></div>
+                <div class="src-metric"><span>Health</span><strong class="{% if sc.health_score>=65 %}text-success{% elif sc.health_score>=50 %}text-warning{% else %}text-danger{% endif %}">{{ sc.health_score }}/100</strong></div>
+                <div class="src-metric"><span>Customer Score</span><strong class="{% if sc.csat_score>=70 %}text-success{% elif sc.csat_score>=55 %}text-warning{% else %}text-danger{% endif %}">{{ sc.csat_score }}/100</strong></div>
+                <div class="src-metric"><span>Discount</span><strong class="{% if sc.discount_pct>0 %}text-warning{% else %}text-success{% endif %}">{{ sc.discount_pct }}%</strong></div>
+                <div class="src-metric"><span>Days to sell</span><strong>{{ sc.days_to_sell }}d</strong></div>
+              </div>
+              <div class="src-action tag {% if sc.order_action in ['ORDER_URGENT','ORDER_NOW'] %}tag-red{% elif sc.order_action in ['ORDER_SOON','REDUCE_STOCK'] %}tag-yellow{% else %}tag-green{% endif %}">
+                {% if sc.order_action=='ORDER_URGENT' %}🔴 Order Urgently
+                {% elif sc.order_action=='ORDER_NOW' %}🟠 Order Now
+                {% elif sc.order_action=='ORDER_SOON' %}🟡 Order Soon
+                {% elif sc.order_action=='REDUCE_STOCK' %}🔵 Reduce Stock
+                {% else %}🟢 Stock is Fine{% endif %}
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+
+        <div class="card-white mb-4">
+          <h3 style="font-size:1rem;font-weight:800;margin-bottom:14px">💰 Profit Comparison (30 Days)</h3>
+          <canvas id="profitChart" height="120"></canvas>
+        </div>
+
+        <div class="row g-3 mb-4">
+          <div class="col-6"><div class="card-white"><h3 style="font-size:0.9rem;font-weight:800;margin-bottom:10px">❤️ Health Score</h3><canvas id="healthChart" height="150"></canvas></div></div>
+          <div class="col-6"><div class="card-white"><h3 style="font-size:0.9rem;font-weight:800;margin-bottom:10px">😊 Customer Score</h3><canvas id="csatChart" height="150"></canvas></div></div>
+        </div>
+
+        {% set bp = sim_results | sort(attribute='profit_30d') | last %}
+        {% set bh = sim_results | sort(attribute='health_score') | last %}
+        {% set bc = sim_results | sort(attribute='csat_score')  | last %}
+        <div class="winner-box">
+          <div class="winner-box-title">🏆 AI Recommendation</div>
+          <div class="winner-row"><div class="winner-icon">💰</div><div><strong>Most Profit:</strong> {{ bp.label }} — ₹{{ '{:,}'.format(bp.profit_30d|int) }} in 30 days</div></div>
+          <div class="winner-row"><div class="winner-icon">❤️</div><div><strong>Healthiest:</strong> {{ bh.label }} — {{ bh.health_score }}/100</div></div>
+          <div class="winner-row"><div class="winner-icon">😊</div><div><strong>Happiest Customers:</strong> {{ bc.label }} — {{ bc.csat_score }}/100</div></div>
+          <div class="winner-note">
+            💡 <strong>Tip:</strong> Want most profit? Go with "{{ bp.label }}". Want happiest customers? Try "{{ bc.label }}". Adjust the numbers and run again to explore more options.
+          </div>
+          <div class="mt-3">
+            <button class="llmp-btn w-100" style="justify-content:center" onclick="getLLMCompare()">
+              <i class="bi bi-stars me-2"></i>Ask AI to Explain These Results
+            </button>
+          </div>
+        </div>
+        <div id="simLLMResult" class="llm-insight-box mt-3" style="display:none">
+          <div class="lib-header">
+            <div class="lib-icon"><i class="bi bi-cpu-fill"></i></div>
+            <div>AI Comparison</div>
+            <button class="chat-icon-btn ms-auto" onclick="document.getElementById('simLLMResult').style.display='none'"><i class="bi bi-x"></i></button>
+          </div>
+          <div id="simLLMText" class="lib-text"></div>
+        </div>
+
+        {% else %}
+        <div class="sim-empty">
+          <div class="sim-empty-icon">🎮</div>
+          <div class="sim-empty-title">Set up your scenarios and click Run</div>
+          <div class="sim-empty-sub">Change price, stock, or season for up to 3 scenarios. The AI will instantly compare all 4 outcomes — including your current situation.</div>
+          <div class="mx-auto" style="max-width:320px">
+            <div class="sim-feat"><span class="tag tag-green">✓</span> See if a price cut actually increases your profit</div>
+            <div class="sim-feat"><span class="tag tag-green">✓</span> Find out how much to stock before a festival</div>
+            <div class="sim-feat"><span class="tag tag-green">✓</span> Compare 4 outcomes side by side in seconds</div>
+            <div class="sim-feat"><span class="tag tag-green">✓</span> Full AI analysis on every scenario</div>
+          </div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="d-flex gap-3 flex-wrap mt-4">
+      {%- if shop_id is defined and shop_id and shop_product_id is defined and shop_product_id -%}
+      <a href="{{ url_for('shopkeeper.product_results', shop_id=shop_id, product_id=shop_product_id) }}" class="btn-outline btn-lg">
+        <i class="bi bi-bar-chart-fill me-2"></i>Back to Results
+      </a>
+      <a href="{{ url_for('shopkeeper.add_product_to_shop', shop_id=shop_id) }}" class="btn-outline btn-lg">
+        <i class="bi bi-plus-circle me-2"></i>Analyse Another
+      </a>
+      {%- elif shop_product_id is defined and shop_product_id -%}
+      <a href="{{ url_for('shop.results', product_id=shop_product_id) }}" class="btn-outline btn-lg">
+        <i class="bi bi-bar-chart-fill me-2"></i>Back to Results
+      </a>
+      <a href="{{ url_for('shop.add') }}" class="btn-outline btn-lg">
+        <i class="bi bi-plus-circle me-2"></i>Analyse Another
+      </a>
+      {%- else -%}
+      <a href="{{ url_for('results') }}" class="btn-outline btn-lg">
+        <i class="bi bi-bar-chart-fill me-2"></i>Back to Results
+      </a>
+      <a href="{{ url_for('input_data') }}" class="btn-outline btn-lg">
+        <i class="bi bi-plus-circle me-2"></i>Analyse Another
+      </a>
+      {%- endif -%}
+    </div>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+{% if sim_results %}
+<script>
+function getProductId() {
+  const m = window.location.pathname.match(/\/shops?\/\d+\/products?\/(\d+)|\/shop\/(predict|decision|results|simulate)\/(\d+)/);
+  return m ? (m[1] || m[3]) : null;
+}
+function getShopId() {
+  const m = window.location.pathname.match(/\/shops\/(\d+)/);
+  return m ? m[1] : null;
+}
+function getLLMCompare() {
+  const box  = document.getElementById('simLLMResult');
+  const text = document.getElementById('simLLMText');
+  box.style.display = 'block';
+  text.innerHTML = '<div class="llm-loading"><span class="typing-dots"><span></span><span></span><span></span></span> AI is comparing your scenarios…</div>';
+  const scenarios = typeof sd !== 'undefined' ? sd : [];
+  fetch('/llm/compare', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ scenarios, product_id: getProductId(), shop_id: getShopId() })
+  }).then(r => r.json()).then(d => {
+    if (d.error) { text.innerHTML = '⚠️ ' + d.error; return; }
+    text.innerHTML = '<div class="llm-narrative">' + formatLLM(d.comparison) + '</div>';
+  }).catch(() => { text.innerHTML = '⚠️ Cannot connect. Check your OPENROUTER_API_KEY.'; });
+}
+function formatLLM(text) {
+  return text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g,'<em>$1</em>')
+    .replace(/\n\n/g,'</p><p>')
+    .replace(/\n/g,'<br/>');
+}
+const sd = {{ sim_json | safe }};
+const labels = sd.map(s => s.label);
+const bg = ['rgba(176,168,158,.8)','rgba(37,99,235,.8)','rgba(13,148,136,.8)','rgba(124,58,237,.8)'];
+const bd = ['#B0A89E','#2563EB','#0D9488','#7C3AED'];
+const chartOpts = {
+  plugins: {
+    legend: { display: false },
+    tooltip: { backgroundColor: 'white', titleColor: '#1A1814', bodyColor: '#3D3730', borderColor: '#E8E4DE', borderWidth: 1 }
+  },
+  scales: {
+    x: { ticks: { color: '#B0A89E', font: { size: 10 } }, grid: { color: '#F4F2EE' } },
+    y: { ticks: { color: '#B0A89E' }, grid: { color: '#F4F2EE' } }
+  }
+};
+new Chart(document.getElementById('profitChart'), {
+  type: 'bar',
+  data: { labels, datasets: [{ data: sd.map(s => s.profit_30d), backgroundColor: bg, borderColor: bd, borderWidth: 2, borderRadius: 8 }] },
+  options: { ...chartOpts, plugins: { ...chartOpts.plugins, tooltip: { ...chartOpts.plugins.tooltip, callbacks: { label: ctx => '₹' + Math.round(ctx.raw).toLocaleString('en-IN') } } }, scales: { ...chartOpts.scales, y: { ticks: { color: '#B0A89E', callback: v => '₹' + v.toLocaleString('en-IN') }, grid: { color: '#F4F2EE' } } } }
+});
+const ddOpts = {
+  responsive: true, cutout: '50%',
+  plugins: {
+    legend: { position: 'bottom', labels: { color: '#7A7068', font: { size: 9 }, padding: 6, boxWidth: 10 } },
+    tooltip: { backgroundColor: 'white', titleColor: '#1A1814', bodyColor: '#3D3730', borderColor: '#E8E4DE', borderWidth: 1 }
+  }
+};
+new Chart(document.getElementById('healthChart'), { type: 'doughnut', data: { labels, datasets: [{ data: sd.map(s => s.health_score), backgroundColor: bg, borderColor: bd, borderWidth: 2 }] }, options: ddOpts });
+new Chart(document.getElementById('csatChart'),   { type: 'doughnut', data: { labels, datasets: [{ data: sd.map(s => s.csat_score),   backgroundColor: bg, borderColor: bd, borderWidth: 2 }] }, options: ddOpts });
+</script>
+{% endif %}
+{% endblock %}

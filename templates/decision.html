@@ -1,0 +1,469 @@
+{% extends "base.html" %}
+{% block title %}What Should You Do | MerchAI{% endblock %}
+{% block content %}
+
+<div class="page-hero">
+  <div class="container-xl">
+    <div class="d-flex align-items-center gap-4">
+      <div class="page-hero-icon" style="background:linear-gradient(135deg,#7C3AED,#6D28D9);color:white">
+        <i class="bi bi-lightbulb-fill"></i>
+      </div>
+      <div>
+        <h1 class="page-hero-title">💡 What Should You Do?</h1>
+        <p class="page-hero-sub">AI recommendations for <strong>{{ product_name }}</strong> — in plain, simple language</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<section class="page-section">
+  <div class="container-xl">
+
+    <!-- Quick summary bar -->
+    <div class="card-white mb-4" style="padding:18px 24px">
+      <div class="row g-3 align-items-center text-center">
+        {% for emoji, label, val, color in [
+          ('🛡️','AI Accuracy', d.confidence_pct|string + '%', 'var(--teal)' if d.confidence_pct>=75 else ('var(--yellow)' if d.confidence_pct>=55 else 'var(--red)')),
+          ('❤️','Overall Health', d.health_score|string + '/100 (' + d.health_grade + ')', 'var(--green)' if d.health_score>=80 else ('var(--blue)' if d.health_score>=65 else ('var(--yellow)' if d.health_score>=50 else 'var(--red)'))),
+          ('😊','Customer Score', d.csat_score|string + '/100 (' + d.csat_level + ')', 'var(--teal)' if d.csat_score>=85 else ('var(--blue)' if d.csat_score>=70 else ('var(--yellow)' if d.csat_score>=55 else 'var(--red)'))),
+          ('⏱️','Days of Stock', d.days_to_sell|string + ' days', 'var(--green)' if d.days_to_sell<=d.expiry_days else 'var(--red)'),
+          ('📦','Stock Level', d.zone_label, 'var(--green)' if d.zone_color=='success' else ('var(--yellow)' if d.zone_color=='warning' else 'var(--red)')),
+        ] %}
+        <div class="col-6 col-md">
+          <div style="font-size:1.3rem;margin-bottom:4px">{{ emoji }}</div>
+          <div style="font-size:0.65rem;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);font-weight:700;margin-bottom:3px">{{ label }}</div>
+          <div style="font-family:var(--font-head);font-weight:900;font-size:0.9rem;color:{{ color }}">{{ val }}</div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- LLM INSIGHTS ROW -->
+    <div class="llm-insights-row mb-4">
+      <div class="lir-label"><i class="bi bi-cpu-fill me-2"></i><strong>Ask AI to explain:</strong></div>
+      <button class="lir-btn" onclick="getInsight('discount')">🏷️ Why this discount?</button>
+      <button class="lir-btn" onclick="getInsight('order')">📦 Why this order qty?</button>
+      <button class="lir-btn" onclick="getInsight('health')">❤️ What is health score?</button>
+      <button class="lir-btn" onclick="getInsight('risk')">⚠️ What's my risk?</button>
+      <button class="lir-btn" onclick="getInsight('forecast')">📈 Forecast confidence?</button>
+    </div>
+    <div id="llmInsightBox" class="llm-insight-box" style="display:none">
+      <div class="lib-header">
+        <div class="lib-icon"><i class="bi bi-stars"></i></div>
+        <div id="libTopic"></div>
+        <button class="chat-icon-btn ms-auto" onclick="document.getElementById('llmInsightBox').style.display='none'"><i class="bi bi-x"></i></button>
+      </div>
+      <div id="libText" class="lib-text"></div>
+    </div>
+
+    <!-- 8 advice steps -->
+    <div style="display:flex;flex-direction:column;gap:12px">
+
+      <!-- Step 1: Sales Speed -->
+      <div class="advice-step">
+        <div class="advice-step-head">
+          <div class="advice-step-num">1</div>
+          <div class="advice-step-title">📊 How fast are you selling?</div>
+          <div class="tag tag-gray">{{ d.demand_pattern }} sales</div>
+        </div>
+        <div class="advice-step-body">
+          <div class="metric-grid">
+            <div class="metric-box"><div class="metric-box-label">This week's rate</div><div class="metric-box-val">{{ d.v_week }} units/day</div></div>
+            <div class="metric-box"><div class="metric-box-label">Monthly average rate</div><div class="metric-box-val">{{ d.v_month }} units/day</div></div>
+            <div class="metric-box"><div class="metric-box-label">Sales trend</div>
+              <div class="metric-box-val {% if d.momentum>1.15 %}text-success{% elif d.momentum<0.85 %}text-danger{% endif %}">
+                {% if d.momentum>1.15 %}↑ Speeding up{% elif d.momentum<0.85 %}↓ Slowing down{% else %}→ Steady{% endif %}
+              </div>
+            </div>
+            <div class="metric-box-hl"><div class="metric-box-label">AI forecast rate</div><div class="metric-box-val">{{ d.velocity_adjusted }} units/day</div></div>
+          </div>
+          <div class="info-box mt-3">
+            <i class="bi bi-info-circle-fill" style="flex-shrink:0"></i>
+            <span>{% if d.momentum>1.15 %}Your sales this week are faster than average — demand is picking up. We've adjusted the forecast upwards.
+            {% elif d.momentum<0.85 %}Your sales this week are slower than average. We've adjusted the forecast downwards.
+            {% else %}Your sales this week match the monthly average — we're confident in the forecast.{% endif %}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 2: What you'll sell -->
+      <div class="advice-step">
+        <div class="advice-step-head">
+          <div class="advice-step-num">2</div>
+          <div class="advice-step-title">🔮 What will you sell in coming days?</div>
+          <div class="tag {% if d.trend=='Rising' %}tag-green{% elif d.trend=='Falling' %}tag-red{% else %}tag-yellow{% endif %}">{{ d.intensity }}</div>
+        </div>
+        <div class="advice-step-body">
+          <div class="metric-grid">
+            <div class="metric-box-hl"><div class="metric-box-label">Next 7 days</div><div class="metric-box-val">{{ d.predicted_demand }} units</div></div>
+            <div class="metric-box"><div class="metric-box-label">Next 30 days</div><div class="metric-box-val">{{ d.forecast_d30 }} units</div></div>
+            <div class="metric-box"><div class="metric-box-label">Next 90 days</div><div class="metric-box-val">{{ d.forecast_d90 }} units</div></div>
+            <div class="metric-box"><div class="metric-box-label">Demand level</div>
+              <div class="metric-box-val {% if d.is_high_demand %}text-danger{% endif %}">
+                {% if d.is_high_demand %}🔥 Selling fast!{% else %}😐 Normal pace{% endif %}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 3: Will stock last? -->
+      <div class="advice-step" style="border:1.5px solid {% if d.will_sell_before_expiry %}#86EFAC{% else %}#FCA5A5{% endif %}">
+        <div class="advice-step-head" style="background:{% if d.will_sell_before_expiry %}var(--bg-green){% else %}var(--bg-red){% endif %}">
+          <div class="advice-step-num" style="background:{% if d.will_sell_before_expiry %}var(--green){% else %}var(--red){% endif %}">3</div>
+          <div class="advice-step-title">⏱️ Will your stock sell before it expires?</div>
+          <div class="tag {% if d.will_sell_before_expiry %}tag-green{% else %}tag-red{% endif %}">
+            {% if d.will_sell_before_expiry %}✅ Yes — you're fine{% else %}⚠️ Risk of waste{% endif %}
+          </div>
+        </div>
+        <div class="advice-step-body">
+          <div class="metric-grid">
+            <div class="metric-box"><div class="metric-box-label">You have</div><div class="metric-box-val">{{ d.stock|int }} units</div></div>
+            <div class="metric-box"><div class="metric-box-label">Will last</div><div class="metric-box-val {% if d.days_to_sell > d.expiry_days %}text-danger{% else %}text-success{% endif %}">{{ d.days_to_sell }} days</div></div>
+            <div class="metric-box"><div class="metric-box-label">Expires in</div><div class="metric-box-val">{{ d.expiry_days }} days</div></div>
+            <div class="metric-box"><div class="metric-box-label">Safety buffer</div><div class="metric-box-val" style="color:var(--teal)">{{ d.safety_stock }} units</div></div>
+          </div>
+          <div class="compare-box {% if d.will_sell_before_expiry %}compare-ok{% else %}compare-risk{% endif %} mt-3">
+            <div class="compare-head">
+              {% if d.will_sell_before_expiry %}✅ Sells out BEFORE expiry — No discount needed for expiry
+              {% else %}⚠️ Will NOT sell out before expiry — Action needed{% endif %}
+            </div>
+            <div class="compare-body">
+              <div class="compare-side {% if d.days_to_sell <= d.expiry_days %}compare-winner{% endif %}">
+                <div class="compare-big">{{ d.days_to_sell }}</div>
+                <div class="compare-small">days to sell</div>
+              </div>
+              <div class="compare-vs">vs</div>
+              <div class="compare-side {% if d.days_to_sell > d.expiry_days %}compare-winner{% endif %}">
+                <div class="compare-big">{{ d.expiry_days }}</div>
+                <div class="compare-small">days to expiry</div>
+              </div>
+            </div>
+            <div class="compare-verdict">
+              {% if d.will_sell_before_expiry %}
+                Your stock will sell out <strong>{{ (d.expiry_days - d.days_to_sell)|round|int }} days before the expiry date</strong>.
+                Customers will buy it naturally — giving a discount here would cut profit for no reason.
+              {% else %}
+                At this sales pace, stock takes <strong>{{ d.days_to_sell }} days</strong> but expires in <strong>{{ d.expiry_days }} days</strong>.
+                About <strong>{{ (d.fraction_at_risk*100)|round|int }}% of your stock</strong> could expire unsold. A discount will help move it faster.
+              {% endif %}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 4: Should you discount? -->
+      <div class="advice-step">
+        <div class="advice-step-head">
+          <div class="advice-step-num">4</div>
+          <div class="advice-step-title">🏷️ Should you change your price?</div>
+          <div class="tag {% if d.discount_tier=='NONE' %}tag-green{% elif d.discount_tier in ['LIGHT','COMPETITIVE'] %}tag-yellow{% else %}tag-red{% endif %}">
+            {% if d.discount_tier=='NONE' %}Keep full price{% elif d.discount_tier=='LIGHT' %}Small discount{% elif d.discount_tier=='MODERATE' %}Moderate discount{% elif d.discount_tier=='AGGRESSIVE' %}Urgent discount{% else %}Small adjustment{% endif %}
+          </div>
+        </div>
+        <div class="advice-step-body">
+          <div class="metric-grid">
+            <div class="metric-box"><div class="metric-box-label">Your margin</div><div class="metric-box-val">{{ d.current_margin_pct }}% (₹{{ d.current_margin_value }})</div></div>
+            <div class="metric-box"><div class="metric-box-label">Minimum price</div><div class="metric-box-val">₹{{ d.min_acceptable_price }}</div></div>
+            {% if d.comp_status != 'UNKNOWN' %}
+            <div class="metric-box"><div class="metric-box-label">vs Competitor</div>
+              <div class="metric-box-val {% if d.comp_status=='OVERPRICED' %}text-danger{% elif d.comp_status=='COMPETITIVE' %}text-success{% else %}text-warning{% endif %}">
+                {{ d.comp_status }}{% if d.price_gap_pct != 0 %} ({{ d.price_gap_pct }}%){% endif %}
+              </div>
+            </div>
+            {% endif %}
+            <div class="metric-box-hl"><div class="metric-box-label">Recommended</div>
+              <div class="metric-box-val" style="font-size:1.1rem">
+                {% if d.discount_pct > 0 %}{{ d.discount_pct }}% OFF → ₹{{ d.discounted_price }}
+                {% else %}✓ Keep ₹{{ d.current_price }}{% endif %}
+              </div>
+            </div>
+          </div>
+          {% if d.discount_pct > 0 %}
+          <div class="row g-2 mt-2">
+            <div class="col-md-4"><div style="background:var(--bg-soft);border-radius:var(--r-md);padding:10px;text-align:center;font-size:0.82rem"><span style="color:var(--text-muted)">New margin:</span><br/><strong>{{ d.new_margin_pct }}%</strong></div></div>
+            <div class="col-md-4"><div style="background:var(--bg-green);border-radius:var(--r-md);padding:10px;text-align:center;font-size:0.82rem"><span style="color:var(--text-muted)">Sales uplift:</span><br/><strong style="color:var(--green)">+{{ d.demand_uplift_pct }}%</strong></div></div>
+            <div class="col-md-4"><div style="background:var(--bg-blue);border-radius:var(--r-md);padding:10px;text-align:center;font-size:0.82rem"><span style="color:var(--text-muted)">New daily demand:</span><br/><strong style="color:var(--blue)">{{ d.new_demand_daily }} units</strong></div></div>
+          </div>
+          {% endif %}
+          <div class="info-box mt-3"><i class="bi bi-info-circle-fill" style="flex-shrink:0"></i><span>{{ d.discount_reason }}</span></div>
+          {% if d.comp_status not in ('UNKNOWN',) %}
+          <div class="info-box mt-2" style="background:var(--bg-soft);border-color:var(--border)"><i class="bi bi-building" style="flex-shrink:0"></i><span>{{ d.comp_msg }}</span></div>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- Step 5: Order more? + REORDER WINDOW -->
+      <div class="advice-step" style="border:1.5px solid {% if d.order_urgency in ['CRITICAL','HIGH'] %}#FCA5A5{% elif d.order_urgency=='MEDIUM' %}#FDE68A{% else %}var(--border-soft){% endif %}">
+        <div class="advice-step-head">
+          <div class="advice-step-num">5</div>
+          <div class="advice-step-title">📦 Should you order more stock?</div>
+          <div class="tag {% if d.order_urgency in ['CRITICAL','HIGH'] %}tag-red{% elif d.order_urgency=='MEDIUM' %}tag-yellow{% elif d.order_urgency=='LOW' %}tag-blue{% else %}tag-green{% endif %}">
+            {% if d.order_urgency=='CRITICAL' %}🚨 Order urgently{% elif d.order_urgency=='HIGH' %}🟠 Order now{% elif d.order_urgency=='MEDIUM' %}🟡 Order soon{% elif d.order_urgency=='LOW' %}🔵 Reduce stock{% else %}🟢 You're fine{% endif %}
+          </div>
+        </div>
+        <div class="advice-step-body">
+
+          <!-- Reorder window controller -->
+          <div class="reorder-banner">
+            <div class="rwb-left">
+              <div class="rwb-title">📅 Reorder Planning Window</div>
+              <div class="rwb-desc">How many days should this reorder cover? Adjust to update the quantity.</div>
+            </div>
+            <div class="rwb-right">
+              <input type="range" id="winSlider" min="1" max="90" value="{{ d.reorder_window_days }}" class="rwb-slider"/>
+              <div class="rwb-labels"><span>1d</span><span>7d</span><span>14d</span><span>30d</span><span>90d</span></div>
+              <div class="rwb-num-row">
+                <input type="number" id="winNumber" min="1" max="90" value="{{ d.reorder_window_days }}" class="rwb-num friendly-input"/>
+                <span class="rwb-unit">days</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Reorder result -->
+          <div class="reorder-result" id="reorderResult">
+            {% if d.order_action in ['ORDER_URGENT','ORDER_NOW','ORDER_SOON'] %}
+            <div class="rr-headline">
+              Order <span class="rr-qty" id="rrQty">{{ d.window_reorder_qty }}</span> units
+              for the next <span class="rr-days" id="rrDays">{{ d.reorder_window_days }}</span> days
+            </div>
+            <div style="display:flex;flex-direction:column;gap:7px">
+              <div class="rr-item"><span class="rr-item-label">Expected demand (next <span class="rr-d">{{ d.reorder_window_days }}</span>d)</span><strong id="rrDemand">{{ d.demand_for_window }} units</strong></div>
+              <div class="rr-item"><span class="rr-item-label">Your current stock</span><strong>{{ d.stock|int }} units</strong></div>
+              <div class="rr-item" style="background:var(--red-light);border:1px solid #FECACA"><span class="rr-item-label">Shortfall (demand − stock)</span><strong style="color:var(--red)" id="rrGap">{{ d.stock_gap }} units</strong></div>
+              <div class="rr-item"><span class="rr-item-label">Safety buffer</span><strong id="rrSS">{{ d.safety_stock }} units</strong></div>
+              <div class="rr-item rr-item-total"><span class="rr-item-label"><strong>Total to order (shortfall + buffer)</strong></span><strong style="color:var(--green);font-size:1.1rem" id="rrTotal">{{ d.window_reorder_qty }} units</strong></div>
+            </div>
+            <div class="rr-cov-track mt-3"><div class="rr-cov-fill" id="rrCovFill" style="width:{{ d.coverage_pct }}%;background:{% if d.coverage_pct<50 %}var(--red){% elif d.coverage_pct<80 %}var(--yellow){% else %}var(--teal){% endif %}"></div></div>
+            <div class="rr-cov-label">Your stock covers <strong id="rrCovPct">{{ d.coverage_pct }}%</strong> of the {{ d.reorder_window_days }}-day window</div>
+            {% else %}
+            <div class="rr-ok-msg">
+              <span style="font-size:1.2rem">✅</span>
+              <span>Stock is sufficient — covers <strong id="rrCovPct">{{ d.coverage_pct }}%</strong> of the <span id="rrDays">{{ d.reorder_window_days }}</span>-day window (<span id="rrDemand">{{ d.demand_for_window }}</span> units expected, you have {{ d.stock|int }}). No reorder needed right now.</span>
+            </div>
+            {% endif %}
+            <div class="rr-msg-note" id="rrMsg">{{ d.order_msg }}</div>
+          </div>
+
+          <div class="metric-grid mt-3">
+            <div class="metric-box"><div class="metric-box-label">Days of stock left</div><div class="metric-box-val {% if d.days_cover<7 %}text-danger{% elif d.days_cover>30 %}text-warning{% else %}text-success{% endif %}">{{ d.days_cover }} days</div></div>
+            <div class="metric-box"><div class="metric-box-label">Order trigger point</div><div class="metric-box-val">{{ d.rop }} units</div></div>
+            <div class="metric-box"><div class="metric-box-label">Best order size</div><div class="metric-box-val">{{ d.eoq }} units</div></div>
+            <div class="metric-box"><div class="metric-box-label">Orders per year</div><div class="metric-box-val">{{ d.orders_per_year }}</div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 6: Finances -->
+      <div class="advice-step">
+        <div class="advice-step-head">
+          <div class="advice-step-num">6</div>
+          <div class="advice-step-title">💰 How are your finances looking?</div>
+          <div class="tag {% if d.health_score>=80 %}tag-green{% elif d.health_score>=65 %}tag-blue{% elif d.health_score>=50 %}tag-yellow{% else %}tag-red{% endif %}">
+            {{ d.health_grade }} — {{ d.health_score }}/100
+          </div>
+        </div>
+        <div class="advice-step-body">
+          <div class="metric-grid">
+            <div class="metric-box"><div class="metric-box-label">Return on investment</div><div class="metric-box-val" style="color:{% if d.gmroi>=2 %}var(--green){% elif d.gmroi>=1 %}var(--yellow){% else %}var(--red){% endif %}">{{ d.gmroi }}× {% if d.gmroi>=2 %}👍{% elif d.gmroi>=1 %}😐{% else %}👎{% endif %}</div></div>
+            <div class="metric-box"><div class="metric-box-label">Product available %</div><div class="metric-box-val">{{ d.fill_rate }}%</div></div>
+            <div class="metric-box"><div class="metric-box-label">Your profit margin</div><div class="metric-box-val">{{ d.gross_margin_pct }}%</div></div>
+            <div class="metric-box"><div class="metric-box-label">Monthly storage cost</div><div class="metric-box-val">₹{{ '{:,}'.format(d.carrying_cost_30d|int) }}</div></div>
+            <div class="metric-box-hl"><div class="metric-box-label">Expected revenue (30d)</div><div class="metric-box-val">₹{{ '{:,}'.format(d.projected_revenue_30d|int) }}</div></div>
+            <div class="metric-box-hl" style="background:var(--bg-green);border-color:#86EFAC"><div class="metric-box-label" style="color:var(--teal)">Expected profit (30d)</div><div class="metric-box-val" style="color:var(--green)">₹{{ '{:,}'.format(d.projected_profit_30d|int) }}</div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 7: Customer happiness -->
+      <div class="advice-step">
+        <div class="advice-step-head">
+          <div class="advice-step-num">7</div>
+          <div class="advice-step-title">😊 How happy are your customers?</div>
+          <div class="tag {% if d.csat_score>=85 %}tag-green{% elif d.csat_score>=70 %}tag-blue{% elif d.csat_score>=55 %}tag-yellow{% else %}tag-red{% endif %}">
+            {{ d.csat_score }}/100 — {{ d.csat_level }}
+          </div>
+        </div>
+        <div class="advice-step-body">
+          {% for label, score, color in [
+            ('Product is in stock (40% of score)', d.availability_score, 'var(--teal)' if d.availability_score>=80 else ('var(--yellow)' if d.availability_score>=60 else 'var(--red)')),
+            ('Your price vs competitors (30%)', d.price_score, 'var(--teal)' if d.price_score>=80 else ('var(--yellow)' if d.price_score>=60 else 'var(--red)')),
+            ('Meeting customer demand (20%)', d.fulfill_score, 'var(--teal)' if d.fulfill_score>=80 else ('var(--yellow)' if d.fulfill_score>=60 else 'var(--red)')),
+            ('Product freshness (10%)', d.freshness_score, 'var(--teal)' if d.freshness_score>=80 else ('var(--yellow)' if d.freshness_score>=60 else 'var(--red)')),
+          ] %}
+          <div class="csat-row">
+            <span class="csat-label">{{ label }}</span>
+            <div class="csat-track"><div class="csat-fill" data-w="{{ score }}" style="width:0%;background:{{ color }}"></div></div>
+            <span class="csat-val">{{ score }}</span>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <!-- Step 8: Risk -->
+      <div class="advice-step">
+        <div class="advice-step-head">
+          <div class="advice-step-num">8</div>
+          <div class="advice-step-title">⚠️ What could go wrong?</div>
+          <div class="conf-pill"><i class="bi bi-shield-check"></i> {{ d.confidence_pct }}% confident</div>
+        </div>
+        <div class="advice-step-body">
+          <div class="metric-grid">
+            <div class="metric-box"><div class="metric-box-label">Chance of running out</div><div class="metric-box-val {% if d.stockout_prob>20 %}text-danger{% elif d.stockout_prob>10 %}text-warning{% else %}text-success{% endif %}">{{ d.stockout_prob }}%</div></div>
+            <div class="metric-box"><div class="metric-box-label">Units at risk of waste</div><div class="metric-box-val" style="color:var(--yellow)">{{ d.at_risk_units }} units</div></div>
+            <div class="metric-box-hl" style="{% if d.at_risk_value>0 %}background:var(--red-light);border-color:#FECACA{% endif %}">
+              <div class="metric-box-label">Money at risk</div>
+              <div class="metric-box-val {% if d.at_risk_value>0 %}text-danger{% else %}text-success{% endif %}">
+                {% if d.at_risk_value > 0 %}₹{{ '{:,}'.format(d.at_risk_value|int) }}{% else %}₹0 — Safe! 🎉{% endif %}
+              </div>
+            </div>
+            <div class="metric-box-hl" style="background:var(--bg-green);border-color:#86EFAC"><div class="metric-box-label" style="color:var(--teal)">Expected profit boost</div><div class="metric-box-val" style="color:var(--green)">+{{ d.profit_impact }}%</div></div>
+          </div>
+          <div class="info-box mt-3"><i class="bi bi-info-circle-fill" style="flex-shrink:0"></i><span>{{ d.risk_msg }}</span></div>
+        </div>
+      </div>
+
+    </div><!-- end steps -->
+
+    {% if d.markdown_schedule %}
+    <div class="card-white mt-4">
+      <div class="card-section-title"><i class="bi bi-calendar3-week"></i>Week-by-Week Discount Plan</div>
+      <div class="table-responsive">
+        <table class="table ms-table mb-0">
+          <thead><tr><th>Week</th><th>Days Left</th><th>Stock Left</th><th>Discount</th><th>What to Do</th></tr></thead>
+          <tbody>
+            {% for r in d.markdown_schedule %}
+            <tr>
+              <td><strong>Week {{ r.week }}</strong></td>
+              <td class="{% if r.days_left<=7 %}text-danger fw-bold{% elif r.days_left<=14 %}text-warning{% endif %}">{{ r.days_left }} days</td>
+              <td>{{ r.stock_left }} units</td>
+              <td>{% if r.discount>0 %}<span class="tag tag-red">{{ r.discount }}% OFF</span>{% else %}<span class="tag tag-green">No discount</span>{% endif %}</td>
+              <td style="font-size:0.82rem;color:var(--text-muted)">{{ r.note }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Final summary -->
+    <div class="row g-3 mt-4">
+      <div class="col-12"><h3 style="font-family:var(--font-head);font-weight:900;font-size:1.2rem">✅ Summary — What to do right now:</h3></div>
+      <div class="col-md-4">
+        <div class="action-card {% if d.order_action in ['ORDER_URGENT','ORDER_NOW'] %}ac-red{% elif d.order_action in ['ORDER_SOON','REDUCE_STOCK'] %}ac-orange{% else %}ac-green{% endif %}">
+          <div class="ac-icon">{% if d.order_action in ['ORDER_URGENT','ORDER_NOW'] %}🚨{% elif d.order_action=='ORDER_SOON' %}📋{% elif d.order_action=='REDUCE_STOCK' %}⬇️{% else %}✅{% endif %}</div>
+          <div class="ac-tag">Stock Action</div>
+          <div class="ac-main">{% if d.order_action=='ORDER_URGENT' %}Order Urgently{% elif d.order_action=='ORDER_NOW' %}Order Now{% elif d.order_action=='ORDER_SOON' %}Order Soon{% elif d.order_action=='REDUCE_STOCK' %}Reduce Stock{% else %}Stock is Fine{% endif %}</div>
+          {% if d.window_reorder_qty > 0 %}<div class="ac-sub">Order <strong>{{ d.window_reorder_qty }} units</strong> for next {{ d.reorder_window_days }} days</div>{% else %}<div class="ac-sub">{{ d.order_urgency }} priority</div>{% endif %}
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="action-card {% if d.discount_action=='APPLY_DISCOUNT' %}ac-orange{% else %}ac-teal{% endif %}">
+          <div class="ac-icon">{% if d.discount_action=='APPLY_DISCOUNT' %}🏷️{% else %}💰{% endif %}</div>
+          <div class="ac-tag">Pricing Action</div>
+          <div class="ac-main">{% if d.discount_action=='APPLY_DISCOUNT' %}Apply {{ d.discount_pct }}% Discount{% else %}Keep Your Price{% endif %}</div>
+          <div class="ac-sub">{% if d.discount_pct>0 %}New price: ₹{{ d.discounted_price }}{% else %}No change needed{% endif %}</div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="action-card ac-green">
+          <div class="ac-icon">📈</div>
+          <div class="ac-tag">Expected Outcome</div>
+          <div class="ac-main">+{{ d.profit_impact }}% profit boost</div>
+          <div class="ac-sub">{{ d.confidence_pct }}% AI confidence</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="d-flex gap-3 flex-wrap mt-4">
+      {%- if shop_id is defined and shop_id and shop_product_id is defined and shop_product_id -%}
+        <a href="{{ url_for('shopkeeper.product_results', shop_id=shop_id, product_id=shop_product_id) }}" class="btn-orange btn-lg"><i class="bi bi-bar-chart-fill me-2"></i>See Full Report</a>
+        <a href="{{ url_for('shopkeeper.product_simulate', shop_id=shop_id, product_id=shop_product_id) }}" class="btn-outline btn-lg"><i class="bi bi-sliders me-2"></i>Try What-If</a>
+        <a href="{{ url_for('shopkeeper.product_forecast', shop_id=shop_id, product_id=shop_product_id) }}" class="btn-outline btn-lg"><i class="bi bi-arrow-left me-2"></i>Back to Forecast</a>
+      {%- elif shop_product_id is defined and shop_product_id -%}
+        <a href="{{ url_for('shop.results', product_id=shop_product_id) }}" class="btn-orange btn-lg"><i class="bi bi-bar-chart-fill me-2"></i>See Full Report</a>
+        <a href="{{ url_for('shop.simulate', product_id=shop_product_id) }}" class="btn-outline btn-lg"><i class="bi bi-sliders me-2"></i>Try What-If</a>
+        <a href="{{ url_for('shop.forecast', product_id=shop_product_id) }}" class="btn-outline btn-lg"><i class="bi bi-arrow-left me-2"></i>Back to Forecast</a>
+      {%- else -%}
+        <a href="{{ url_for('results') }}" class="btn-orange btn-lg"><i class="bi bi-bar-chart-fill me-2"></i>See Full Report</a>
+        <a href="{{ url_for('simulate') }}" class="btn-outline btn-lg"><i class="bi bi-sliders me-2"></i>Try What-If</a>
+        <a href="{{ url_for('predict') }}" class="btn-outline btn-lg"><i class="bi bi-arrow-left me-2"></i>Back to Forecast</a>
+      {%- endif -%}
+    </div>
+
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function getProductId() {
+  const m = window.location.pathname.match(/\/shops?\/\d+\/products?\/(\d+)|\/shop\/(predict|decision|results|simulate)\/(\d+)/);
+  return m ? (m[1] || m[3]) : null;
+}
+function getShopId() {
+  const m = window.location.pathname.match(/\/shops\/(\d+)/);
+  return m ? m[1] : null;
+}
+function getInsight(topic) {
+  const box  = document.getElementById('llmInsightBox');
+  const text = document.getElementById('libText');
+  const topicEl = document.getElementById('libTopic');
+  const labels = {
+    discount:'🏷️ Why this discount?', order:'📦 Why this order quantity?',
+    health:'❤️ What does health score mean?', risk:'⚠️ What is my risk?',
+    forecast:'📈 Forecast confidence'
+  };
+  box.style.display = 'block';
+  text.innerHTML = '<div class="llm-loading"><span class="typing-dots"><span></span><span></span><span></span></span> Asking AI…</div>';
+  topicEl.textContent = labels[topic] || 'AI Insight';
+  fetch('/llm/insight', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ topic, product_id: getProductId(), shop_id: getShopId() })
+  }).then(r => r.json()).then(d => {
+    if (d.error) { text.innerHTML = '⚠️ ' + d.error; return; }
+    text.innerHTML = '<div class="llm-narrative">' + formatLLM(d.insight) + '</div>';
+  }).catch(() => { text.innerHTML = '⚠️ Cannot connect. Check your OPENROUTER_API_KEY.'; });
+}
+function formatLLM(text) {
+  return text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g,'<em>$1</em>')
+    .replace(/\n\n/g,'</p><p>')
+    .replace(/\n/g,'<br/>');
+}
+document.querySelectorAll('.advice-step').forEach((el, i) => {
+  el.style.opacity = '0'; el.style.transform = 'translateY(12px)';
+  setTimeout(() => { el.style.transition = 'all 0.4s ease'; el.style.opacity = '1'; el.style.transform = 'translateY(0)'; }, 60 + i * 80);
+});
+document.querySelectorAll('.csat-fill[data-w]').forEach(el => {
+  const w = el.dataset.w + '%'; el.style.width = '0%';
+  setTimeout(() => { el.style.transition = 'width 0.8s ease'; el.style.width = w; }, 500);
+});
+const slider = document.getElementById('winSlider');
+const numInp = document.getElementById('winNumber');
+if (slider && numInp) {
+  slider.addEventListener('input', () => { numInp.value = slider.value; fetchReorder(parseInt(slider.value)); });
+  numInp.addEventListener('change', () => {
+    const v = Math.max(1, Math.min(90, parseInt(numInp.value) || 7));
+    numInp.value = v; slider.value = v; fetchReorder(v);
+  });
+}
+function fetchReorder(days) {
+  fetch('/reorder', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ window_days: days }) })
+    .then(r => r.json()).then(d => updateRR(d)).catch(() => {});
+}
+function updateRR(d) {
+  const s = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+  s('rrQty', d.window_reorder_qty); s('rrTotal', d.window_reorder_qty + ' units');
+  s('rrDemand', d.demand_for_window + ' units'); s('rrGap', d.stock_gap + ' units');
+  s('rrSS', d.safety_stock + ' units'); s('rrCovPct', d.coverage_pct + '%');
+  document.querySelectorAll('.rr-days, #rrDays').forEach(el => el.textContent = d.window_days);
+  document.querySelectorAll('.rr-d').forEach(el => el.textContent = d.window_days);
+  const bar = document.getElementById('rrCovFill');
+  if (bar) { bar.style.width = d.coverage_pct + '%'; bar.style.background = d.coverage_pct < 50 ? 'var(--red)' : d.coverage_pct < 80 ? 'var(--yellow)' : 'var(--teal)'; }
+  s('rrMsg', d.order_msg);
+}
+</script>
+{% endblock %}

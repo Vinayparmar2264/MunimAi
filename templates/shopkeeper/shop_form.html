@@ -1,0 +1,212 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit Shop' if mode == 'edit' else 'Create New Shop' }} | MerchAI{% endblock %}
+{% block content %}
+
+<div class="page-hero">
+  <div class="container-xl">
+    <div class="d-flex align-items-center gap-4">
+      <div class="page-hero-icon"
+           style="background:linear-gradient(135deg,{% if mode=='edit' %}var(--teal),#0F766E{% else %}var(--orange),var(--orange-dark){% endif %});color:white">
+        <i class="bi bi-{% if mode=='edit' %}pencil-fill{% else %}shop-window{% endif %}"></i>
+      </div>
+      <div>
+        <h1 class="page-hero-title">{{ '✏️ Edit Shop' if mode=='edit' else '🏪 Create New Shop' }}</h1>
+        <p class="page-hero-sub">
+          {% if mode=='edit' %}Update your shop details
+          {% else %}Add a new shop to your account — one account can manage many shops{% endif %}
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<section class="page-section">
+  <div class="container-xl">
+    <div class="row g-4">
+      <div class="col-lg-7">
+        <form method="POST" id="shopForm">
+
+          {% if errors %}
+          <div class="auth-err mb-3">
+            {% for e in errors %}<div><i class="bi bi-exclamation-triangle-fill me-1"></i>{{ e }}</div>{% endfor %}
+          </div>
+          {% endif %}
+
+          <div class="card-white mb-4">
+            <div class="card-section-title"><i class="bi bi-shop-window"></i>Shop Details</div>
+            <div class="row g-3">
+              <div class="col-12">
+                <label class="form-label">Shop name <span class="req-star">*</span></label>
+                <input type="text" class="friendly-input" name="shop_name"
+                       value="{{ form_data.get('shop_name', '') }}"
+                       placeholder="e.g. Ramesh General Store" required/>
+              </div>
+              <div class="col-12">
+                <label class="form-label">Shop location / address <span class="req-star">*</span></label>
+                <input type="text" class="friendly-input" name="shop_location"
+                       id="shopLocationText"
+                       value="{{ form_data.get('shop_location', '') }}"
+                       placeholder="e.g. Shop 4, Gandhi Market, Bhilai, CG 490001" required/>
+                <div class="form-hint">Enter your full address — this is shown to customers</div>
+              </div>
+              <div class="col-12">
+                <label class="form-label">Extra notes <em class="text-muted">(optional)</em></label>
+                <textarea class="friendly-input" name="extra_notes" rows="2"
+                          placeholder="e.g. Open 9am–9pm, specialising in dairy and organic products">{{ form_data.get('extra_notes', '') }}</textarea>
+              </div>
+            </div>
+          </div>
+
+          <!-- Location coordinates -->
+          <div class="card-white mb-4">
+            <div class="card-section-title"><i class="bi bi-geo-alt-fill"></i>Shop Location on Map</div>
+            <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:12px">
+              Pin your shop on the map so customers can find you in nearby searches.
+              Click the button below to use your current location, or enter coordinates manually.
+            </p>
+
+            <div class="d-flex gap-2 mb-3 flex-wrap">
+              <button type="button" class="btn-teal" onclick="getMyLocation()" id="locBtn">
+                <i class="bi bi-crosshair2 me-1"></i>Use My Current Location
+              </button>
+              <button type="button" class="btn-outline" onclick="toggleManualCoords()">
+                <i class="bi bi-keyboard me-1"></i>Enter Manually
+              </button>
+            </div>
+
+            <div id="manualCoords" style="display:none" class="row g-2 mb-3">
+              <div class="col-6">
+                <label class="form-label" style="font-size:0.8rem">Latitude</label>
+                <input type="number" class="friendly-input" id="latInput"
+                       placeholder="e.g. 21.1938" step="0.0001"
+                       value="{{ form_data.get('latitude', '') }}"/>
+              </div>
+              <div class="col-6">
+                <label class="form-label" style="font-size:0.8rem">Longitude</label>
+                <input type="number" class="friendly-input" id="lonInput"
+                       placeholder="e.g. 81.3509" step="0.0001"
+                       value="{{ form_data.get('longitude', '') }}"/>
+              </div>
+              <div class="col-12">
+                <button type="button" class="btn-outline" style="font-size:0.82rem;padding:7px 14px"
+                        onclick="applyManualCoords()">
+                  <i class="bi bi-check2 me-1"></i>Apply Coordinates
+                </button>
+              </div>
+            </div>
+
+            <div id="locationStatus" class="info-box" style="display:none">
+              <i class="bi bi-geo-alt-fill" style="color:var(--teal)"></i>
+              <span id="locationStatusText"></span>
+            </div>
+
+            <!-- Hidden fields sent with form -->
+            <input type="hidden" name="latitude"  id="hiddenLat"
+                   value="{{ form_data.get('latitude', '') }}"/>
+            <input type="hidden" name="longitude" id="hiddenLon"
+                   value="{{ form_data.get('longitude', '') }}"/>
+          </div>
+
+          <div class="d-flex gap-3">
+            <button type="submit" class="btn-orange btn-lg flex-grow-1">
+              <i class="bi bi-check2-circle me-2"></i>
+              {{ 'Save Changes' if mode=='edit' else 'Create Shop' }}
+            </button>
+            <a href="{{ url_for('shopkeeper.my_shops') }}" class="btn-outline btn-lg">
+              <i class="bi bi-x-circle me-1"></i>Cancel
+            </a>
+          </div>
+        </form>
+      </div>
+
+      <div class="col-lg-5">
+        <div class="sidebar-box mb-3">
+          <div class="sidebar-title">📍 Why add your location?</div>
+          <ul class="guide-list">
+            <li><i class="bi bi-check-circle-fill text-success"></i>Customers nearby can discover your shop</li>
+            <li><i class="bi bi-check-circle-fill text-success"></i>Distance shown on customer search results</li>
+            <li><i class="bi bi-check-circle-fill text-success"></i>Your shop appears in "1 km nearby" searches</li>
+            <li><i class="bi bi-check-circle-fill text-success"></i>Shop name and address shown on customer map</li>
+          </ul>
+        </div>
+        <div class="sidebar-box">
+          <div class="sidebar-title">🏪 Multiple shops?</div>
+          <p style="font-size:0.875rem;color:var(--text-muted);line-height:1.6">
+            You can create as many shops as you need under this one account.
+            Each shop has completely separate products, analysis, and chatbot data.
+            Nothing from one shop can mix with another.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+function getMyLocation() {
+  const btn = document.getElementById('locBtn');
+  btn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>Getting location…';
+  btn.disabled = true;
+
+  if (!navigator.geolocation) {
+    showStatus('Your browser does not support location. Please enter coordinates manually.', false);
+    btn.innerHTML = '<i class="bi bi-crosshair2 me-1"></i>Use My Current Location';
+    btn.disabled = false;
+    return;
+  }
+
+  navigator.geolocation.getCurrentPosition(
+    function(pos) {
+      const lat = pos.coords.latitude.toFixed(6);
+      const lon = pos.coords.longitude.toFixed(6);
+      document.getElementById('hiddenLat').value = lat;
+      document.getElementById('hiddenLon').value = lon;
+      document.getElementById('latInput').value = lat;
+      document.getElementById('lonInput').value = lon;
+      showStatus(`✓ Location captured: ${lat}, ${lon}`, true);
+      btn.innerHTML = '<i class="bi bi-check2 me-1"></i>Location Captured';
+      btn.disabled = false;
+    },
+    function(err) {
+      showStatus('Could not get location. Please enter coordinates manually.', false);
+      btn.innerHTML = '<i class="bi bi-crosshair2 me-1"></i>Use My Current Location';
+      btn.disabled = false;
+      document.getElementById('manualCoords').style.display = 'flex';
+    },
+    { timeout: 10000, maximumAge: 60000 }
+  );
+}
+
+function toggleManualCoords() {
+  const el = document.getElementById('manualCoords');
+  el.style.display = el.style.display === 'none' ? 'flex' : 'none';
+}
+
+function applyManualCoords() {
+  const lat = document.getElementById('latInput').value;
+  const lon = document.getElementById('lonInput').value;
+  if (!lat || !lon) { showStatus('Please enter both latitude and longitude.', false); return; }
+  document.getElementById('hiddenLat').value = lat;
+  document.getElementById('hiddenLon').value = lon;
+  showStatus(`✓ Coordinates set: ${parseFloat(lat).toFixed(4)}, ${parseFloat(lon).toFixed(4)}`, true);
+}
+
+function showStatus(msg, ok) {
+  const el = document.getElementById('locationStatus');
+  const tx = document.getElementById('locationStatusText');
+  el.style.display = 'flex';
+  tx.textContent = msg;
+  el.style.borderColor = ok ? 'var(--teal)' : 'var(--red)';
+}
+
+// Show status if coordinates already set (edit mode)
+window.addEventListener('DOMContentLoaded', function() {
+  const lat = document.getElementById('hiddenLat').value;
+  const lon = document.getElementById('hiddenLon').value;
+  if (lat && lon) showStatus(`✓ Current location: ${lat}, ${lon}`, true);
+});
+</script>
+{% endblock %}

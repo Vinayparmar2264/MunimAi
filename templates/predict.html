@@ -1,0 +1,263 @@
+{% extends "base.html" %}
+{% block title %}Sales Forecast | MerchAI{% endblock %}
+{% block content %}
+
+<div class="page-hero">
+  <div class="container-xl">
+    <div class="d-flex align-items-center gap-4">
+      <div class="page-hero-icon" style="background:linear-gradient(135deg,var(--teal),#0F766E);color:white">
+        <i class="bi bi-graph-up-arrow"></i>
+      </div>
+      <div>
+        <h1 class="page-hero-title">📈 Sales Forecast</h1>
+        <p class="page-hero-sub">Here's how much we expect you to sell — for <strong>{{ product_name }}</strong></p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<section class="page-section">
+  <div class="container-xl">
+    <div class="row g-4">
+
+      <!-- LEFT -->
+      <div class="col-lg-8">
+
+        <!-- Big forecast number -->
+        <div class="card-white mb-4">
+          <div class="row g-0">
+            <div class="col-md-6 pe-md-4" style="border-right:1px solid var(--border)">
+              <p style="font-size:0.78rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);margin-bottom:6px">Expected sales — next 7 days</p>
+              <div class="big-gauge-wrap" style="padding:10px 0 8px">
+                <span class="big-gauge-num">{{ d.predicted_demand }}</span>
+                <span class="big-gauge-unit">units</span>
+              </div>
+              <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
+                <div class="trend-chip {% if d.trend=='Rising' %}trend-up{% elif d.trend=='Falling' %}trend-down{% else %}trend-stable{% endif %}">
+                  {% if d.trend=='Rising' %}📈 Sales Going Up ({{ d.intensity }})
+                  {% elif d.trend=='Falling' %}📉 Sales Going Down ({{ d.intensity }})
+                  {% else %}➡️ Sales Steady ({{ d.intensity }}){% endif %}
+                </div>
+                <div class="conf-pill">
+                  <i class="bi bi-shield-check"></i>{{ (d.vel_confidence*100)|round|int }}% accurate
+                </div>
+              </div>
+              <div class="big-gauge-bar">
+                <div class="big-gauge-fill" id="gaugeFill" data-w="{{ [(d.predicted_demand/150*100),100]|min }}" style="width:0%"></div>
+              </div>
+              <div class="d-flex justify-content-between" style="font-size:0.72rem;color:var(--text-muted)">
+                <span>Low</span><span>Medium</span><span>High</span>
+              </div>
+            </div>
+            <div class="col-md-6 ps-md-4 pt-3 pt-md-0">
+              <p style="font-size:0.78rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);margin-bottom:14px">How much you'll sell over time</p>
+              {% set mx = d.forecast_d90 if d.forecast_d90 > 0 else 1 %}
+              {% for period, val in [('Next 7 days',d.predicted_demand),('Next 14 days',d.forecast_d14),('Next 30 days',d.forecast_d30),('Next 60 days',d.forecast_d60),('Next 90 days',d.forecast_d90)] %}
+              <div class="horizon-row">
+                <span class="horizon-label">{{ period }}</span>
+                <div class="horizon-track"><div class="horizon-fill" data-w="{{ [(val/mx*100),100]|min }}" style="width:0%"></div></div>
+                <span class="horizon-val">{{ val }}</span>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+
+        <!-- 8-week chart -->
+        <div class="card-white mb-4">
+          <h3 style="font-size:1rem;font-weight:800;margin-bottom:16px">📆 Sales trend — next 8 weeks</h3>
+          <canvas id="fcChart" height="120"></canvas>
+        </div>
+
+        <!-- How we calculated this -->
+        <div class="card-white mb-4">
+          <div class="card-section-title"><i class="bi bi-speedometer2"></i>How We Calculated This</div>
+          <div class="row g-3 mb-3">
+            {% for emoji, num, label, sub in [
+              ('📅',d.v_week,'Last-week rate','units per day'),
+              ('📆',d.v_month,'Monthly average','units per day'),
+              ('⚡','↑ Faster' if d.momentum>1.15 else ('↓ Slower' if d.momentum<0.85 else '→ Steady'),'Sales trend','vs average'),
+              ('🎯',d.velocity_adjusted,'AI forecast rate','units per day'),
+            ] %}
+            <div class="col-6 col-md-3">
+              <div style="background:var(--bg-soft);border-radius:var(--r-lg);padding:14px;text-align:center">
+                <div style="font-size:1.5rem;margin-bottom:6px">{{ emoji }}</div>
+                <div style="font-family:var(--font-head);font-weight:900;font-size:1.1rem">{{ num }}</div>
+                <div style="font-size:0.72rem;color:var(--text-muted);font-weight:600">{{ label }}</div>
+                <div style="font-size:0.68rem;color:var(--text-light)">{{ sub }}</div>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+          <div class="info-box">
+            <i class="bi bi-info-circle-fill" style="flex-shrink:0;font-size:1rem;margin-top:2px"></i>
+            <span>
+              Your last 7 days averaged <strong>{{ d.v_week }} units/day</strong> and last 30 days averaged <strong>{{ d.v_month }} units/day</strong>.
+              {% if d.momentum > 1.15 %}Sales are picking up — we expect slightly more going forward.
+              {% elif d.momentum < 0.85 %}Sales are slowing — we expect slightly less going forward.
+              {% else %}Sales are consistent — we expect a similar pace going forward.{% endif %}
+              After adjusting for the current season, we forecast <strong>{{ d.velocity_adjusted }} units/day</strong>.
+            </span>
+          </div>
+        </div>
+
+        <!-- Will stock last? -->
+        <div class="card-white">
+          <div class="card-section-title"><i class="bi bi-boxes"></i>Will Your Stock Last?</div>
+          <div class="row g-3">
+            <div class="col-md-4">
+              <div style="text-align:center;padding:20px;border-radius:var(--r-lg);background:{% if d.zone_color=='success' %}var(--bg-green){% elif d.zone_color=='warning' %}var(--bg-yellow){% else %}var(--bg-red){% endif %};border:1.5px solid {% if d.zone_color=='success' %}#86EFAC{% elif d.zone_color=='warning' %}#FDE68A{% else %}#FECACA{% endif %}">
+                <div style="font-size:2.5rem;margin-bottom:8px">
+                  {% if d.zone_color=='success' %}✅{% elif d.zone_color=='warning' %}⚠️{% else %}🚨{% endif %}
+                </div>
+                <div style="font-weight:800;font-size:0.9rem;color:var(--text-dark)">{{ d.zone_label }}</div>
+                <div style="font-size:0.72rem;color:var(--text-muted);margin-top:3px">{{ d.abc_class }}-class · {{ d.xyz_class }}-demand</div>
+              </div>
+            </div>
+            <div class="col-md-8">
+              <div style="display:flex;flex-direction:column;gap:8px">
+                {% for icon, label, val, colored in [
+                  ('⏱️','Your stock will last',d.days_to_sell|string + ' days', d.days_to_sell > d.expiry_days),
+                  ('📅','Product expires in',d.expiry_days|string + ' days', false),
+                  ('🛡️','Safety buffer to keep',d.safety_stock|string + ' units', false),
+                  ('🔔','Order more when stock hits',d.rop|string + ' units', false),
+                  ('📦','Best order quantity',d.eoq|string + ' units', false),
+                ] %}
+                <div style="display:flex;justify-content:space-between;align-items:center;background:var(--bg-soft);border-radius:var(--r-md);padding:9px 14px;font-size:0.85rem">
+                  <span>{{ icon }} {{ label }}</span>
+                  <strong class="{% if colored %}text-danger{% endif %}">{{ val }}</strong>
+                </div>
+                {% endfor %}
+                {% if d.order_action in ['ORDER_URGENT','ORDER_NOW','ORDER_SOON'] %}
+                <div style="background:var(--bg-blue);border:1.5px solid #BFDBFE;border-radius:var(--r-md);padding:9px 14px;font-size:0.82rem">
+                  📋 <strong>Reorder for next {{ d.reorder_window_days }} days:</strong>
+                  <span style="color:var(--teal);font-weight:900;font-size:1rem;margin-left:6px">{{ d.window_reorder_qty }} units</span>
+                  <span style="color:var(--text-muted);font-size:0.75rem;margin-left:4px">(covers {{ d.coverage_pct }}% of demand)</span>
+                </div>
+                {% endif %}
+              </div>
+              <div class="verdict-box {% if d.will_sell_before_expiry %}verdict-ok{% else %}verdict-warn{% endif %} mt-3">
+                {% if d.will_sell_before_expiry %}
+                  ✅ <strong>Good news!</strong> Your stock sells out {{ (d.expiry_days - d.days_to_sell)|round|int }} days before expiry — no discount needed for that reason.
+                {% else %}
+                  ⚠️ <strong>Watch out!</strong> At this pace, stock takes {{ d.days_to_sell }} days to sell but expires in {{ d.expiry_days }} days. Some may go to waste without action.
+                {% endif %}
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- RIGHT SIDEBAR -->
+      <div class="col-lg-4">
+        <div class="sidebar-box mb-3">
+          <div class="sidebar-title">📋 What You Entered</div>
+          <table class="w-100" style="font-size:0.85rem">
+            <tbody>
+              {% for label, val in [
+                ('Product type', d.category),
+                ('Stock available', d.stock|int|string + ' units'),
+                ('Selling price', '₹' + d.current_price|string),
+                ('Your profit/unit', '₹' + d.current_margin_value|string + ' (' + d.current_margin_pct|string + '%)'),
+                ('Delivery time', d.lead_time_days|string + ' days'),
+              ] %}
+              <tr style="border-bottom:1px solid var(--border-soft)">
+                <td style="padding:7px 0;color:var(--text-muted)">{{ label }}</td>
+                <td style="padding:7px 0;font-weight:700;text-align:right">{{ val }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+
+        <div class="sidebar-box mb-3">
+          <div class="sidebar-title">🛡️ How Confident Is the AI?</div>
+          <div class="conf-ring-wrap">
+            <div class="conf-ring-container">
+              <svg viewBox="0 0 100 100" class="conf-svg">
+                <circle cx="50" cy="50" r="38" class="conf-bg-c"/>
+                <circle cx="50" cy="50" r="38" class="conf-arc"
+                  stroke-dasharray="{{ (d.vel_confidence*238.8)|round }} 238.8"
+                  stroke="{% if d.vel_confidence>=0.75 %}var(--teal){% elif d.vel_confidence>=0.55 %}var(--yellow){% else %}var(--red){% endif %}"/>
+              </svg>
+              <div class="conf-text">
+                <div class="conf-pct">{{ (d.vel_confidence*100)|round|int }}%</div>
+                <div class="conf-lbl">accurate</div>
+              </div>
+            </div>
+          </div>
+          <p style="font-size:0.82rem;color:var(--text-muted);text-align:center;margin-top:6px">
+            {% if d.vel_confidence >= 0.75 %}✅ Your sales are consistent — high accuracy
+            {% elif d.vel_confidence >= 0.55 %}⚠️ Some variation — moderate accuracy
+            {% else %}❌ Sales vary a lot — use with caution{% endif %}
+          </p>
+        </div>
+
+        <div class="d-grid gap-2">
+          {%- if shop_id is defined and shop_id and shop_product_id is defined and shop_product_id -%}
+          <a href="{{ url_for('shopkeeper.product_decision', shop_id=shop_id, product_id=shop_product_id) }}" class="btn-orange">
+            <i class="bi bi-lightbulb-fill me-2"></i>See What To Do →
+          </a>
+          <a href="{{ url_for('shopkeeper.edit_product', shop_id=shop_id, product_id=shop_product_id) }}" class="btn-outline">
+            <i class="bi bi-pencil me-2"></i>Edit Details
+          </a>
+          {%- elif shop_product_id is defined and shop_product_id -%}
+          <a href="{{ url_for('shop.decision', product_id=shop_product_id) }}" class="btn-orange">
+            <i class="bi bi-lightbulb-fill me-2"></i>See What To Do →
+          </a>
+          <a href="{{ url_for('shop.edit', product_id=shop_product_id) }}" class="btn-outline">
+            <i class="bi bi-pencil me-2"></i>Edit Details
+          </a>
+          {%- else -%}
+          <a href="{{ url_for('decision') }}" class="btn-orange">
+            <i class="bi bi-lightbulb-fill me-2"></i>See What To Do →
+          </a>
+          <a href="{{ url_for('input_data') }}" class="btn-outline">
+            <i class="bi bi-pencil me-2"></i>Edit Details
+          </a>
+          {%- endif -%}
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const gf = document.getElementById('gaugeFill');
+if (gf) { setTimeout(() => { gf.style.transition = 'width 1.2s ease'; gf.style.width = gf.dataset.w + '%'; }, 300); }
+
+document.querySelectorAll('.horizon-fill[data-w]').forEach((el, i) => {
+  el.style.width = '0%';
+  setTimeout(() => { el.style.transition = 'width 0.7s ease'; el.style.width = el.dataset.w + '%'; }, 300 + i * 80);
+});
+
+const weeks = {{ d.forecast_weekly_json | safe }};
+new Chart(document.getElementById('fcChart'), {
+  type: 'line',
+  data: {
+    labels: weeks.map((_, i) => `Week ${i + 1}`),
+    datasets: [{
+      label: 'Expected Units', data: weeks,
+      borderColor: '#F97316', backgroundColor: 'rgba(249,115,22,0.08)',
+      borderWidth: 2.5, pointBackgroundColor: '#F97316', pointRadius: 4,
+      fill: true, tension: 0.4
+    }]
+  },
+  options: {
+    responsive: true,
+    plugins: {
+      legend: { labels: { color: '#7A7068', font: { family: 'Plus Jakarta Sans' } } },
+      tooltip: { backgroundColor: 'white', titleColor: '#1A1814', bodyColor: '#3D3730', borderColor: '#E8E4DE', borderWidth: 1 }
+    },
+    scales: {
+      x: { ticks: { color: '#B0A89E' }, grid: { color: '#F4F2EE' } },
+      y: { ticks: { color: '#B0A89E' }, grid: { color: '#F4F2EE' } }
+    }
+  }
+});
+</script>
+{% endblock %}

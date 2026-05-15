@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block title %}Shopkeeper Sign Up | MerchAI{% endblock %}
+{% block content %}
+<div class="auth-page">
+  <div class="container">
+    <div class="auth-card">
+      <div class="auth-logo">
+        <div class="brand-logo"><i class="bi bi-shop"></i></div>
+        <span class="brand-name">MerchAI</span>
+      </div>
+      <h1 class="auth-title">Create your shop account 🎉</h1>
+      <p class="auth-sub">
+        Free forever · Manage multiple shops · Get AI advice on every product
+      </p>
+
+      {% if errors %}
+      <div class="auth-err">
+        <i class="bi bi-exclamation-triangle-fill me-2"></i>
+        {% for e in errors %}<div>{{ e }}</div>{% endfor %}
+      </div>
+      {% endif %}
+
+      <form method="POST">
+        <div class="auth-field">
+          <label class="form-label">Your full name</label>
+          <div class="auth-input-wrap">
+            <i class="bi bi-person-fill auth-field-icon"></i>
+            <input type="text" name="name" class="auth-input"
+                   placeholder="Your name"
+                   value="{{ name or '' }}" required autocomplete="name"/>
+          </div>
+        </div>
+
+        <div class="auth-field">
+          <label class="form-label">Email address</label>
+          <div class="auth-input-wrap">
+            <i class="bi bi-envelope-fill auth-field-icon"></i>
+            <input type="email" name="email" class="auth-input"
+                   placeholder="you@example.com"
+                   value="{{ email or '' }}" required autocomplete="email"/>
+          </div>
+        </div>
+
+        <div class="auth-field">
+          <label class="form-label">Password <span style="color:var(--text-muted);font-weight:400">(at least 6 characters)</span></label>
+          <div class="auth-input-wrap">
+            <i class="bi bi-lock-fill auth-field-icon"></i>
+            <input type="password" name="password" id="pw1" class="auth-input"
+                   placeholder="Create a password" required autocomplete="new-password"/>
+            <button type="button" class="auth-eye" onclick="toggle('pw1',this)">
+              <i class="bi bi-eye-fill"></i>
+            </button>
+          </div>
+          <div class="pw-str" id="pwStr"></div>
+        </div>
+
+        <div class="auth-field">
+          <label class="form-label">Confirm password</label>
+          <div class="auth-input-wrap">
+            <i class="bi bi-shield-lock-fill auth-field-icon"></i>
+            <input type="password" name="confirm_password" id="pw2" class="auth-input"
+                   placeholder="Repeat your password" required autocomplete="new-password"/>
+            <button type="button" class="auth-eye" onclick="toggle('pw2',this)">
+              <i class="bi bi-eye-fill"></i>
+            </button>
+          </div>
+          <div class="pw-match-hint" id="pwMatch"></div>
+        </div>
+
+        <button type="submit" class="btn-orange auth-btn">
+          <i class="bi bi-person-check-fill me-2"></i>Create Shopkeeper Account
+        </button>
+      </form>
+
+      <div class="auth-divider"><span>or</span></div>
+
+      <a href="{{ url_for('auth.customer_signup') }}"
+         class="btn-outline w-100" style="justify-content:center;margin-bottom:12px">
+        <i class="bi bi-bag-heart me-2"></i>Sign up as Customer instead
+      </a>
+
+      <div class="auth-switch">
+        Already have an account? <a href="{{ url_for('auth.login') }}">Log in →</a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function toggle(id, btn) {
+  const el = document.getElementById(id);
+  el.type  = el.type === 'password' ? 'text' : 'password';
+  btn.innerHTML = el.type === 'password'
+    ? '<i class="bi bi-eye-fill"></i>'
+    : '<i class="bi bi-eye-slash-fill"></i>';
+}
+
+document.getElementById('pw1').addEventListener('input', function() {
+  const v  = this.value;
+  const el = document.getElementById('pwStr');
+  if (!v) { el.innerHTML = ''; return; }
+  const s = (v.length >= 8 ? 1 : 0) + (/[A-Z]/.test(v) ? 1 : 0)
+          + (/[0-9]/.test(v) ? 1 : 0) + (/[^A-Za-z0-9]/.test(v) ? 1 : 0);
+  const c = ['','var(--red)','var(--yellow)','var(--blue)','var(--green)'];
+  const l = ['','Weak 😟','Fair 😐','Good 🙂','Strong 💪'];
+  el.innerHTML = `<span style="color:${c[s]||c[1]};font-weight:600">${l[s]||l[1]}</span>`;
+});
+
+document.getElementById('pw2').addEventListener('input', function() {
+  const el = document.getElementById('pwMatch');
+  if (!this.value) { el.innerHTML = ''; return; }
+  el.innerHTML = this.value === document.getElementById('pw1').value
+    ? '<span style="color:var(--green);font-weight:600">✓ Passwords match</span>'
+    : '<span style="color:var(--red);font-weight:600">✗ Passwords do not match</span>';
+});
+</script>
+{% endblock %}

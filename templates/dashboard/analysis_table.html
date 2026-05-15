@@ -1,0 +1,212 @@
+{% extends "base.html" %}
+{% block title %}Shop Analysis | MerchAI{% endblock %}
+{% block content %}
+
+<div class="page-hero">
+  <div class="container-xl">
+    <div class="d-flex align-items-center justify-content-between flex-wrap gap-3">
+      <div class="d-flex align-items-center gap-4">
+        <div class="page-hero-icon" style="background:linear-gradient(135deg,var(--purple),#6D28D9);color:white">
+          <i class="bi bi-table"></i>
+        </div>
+        <div>
+          <h1 class="page-hero-title">📊 Full Shop Report</h1>
+          <p class="page-hero-sub">AI analysis of all <strong>{{ product_count }}</strong> products — sorted by urgency</p>
+        </div>
+      </div>
+      <div class="d-flex gap-2">
+        <a href="{{ url_for('shopkeeper.my_shops') }}" class="btn-teal">
+          <i class="bi bi-shop-window me-1"></i>Multi-Shop View
+        </a>
+        <a href="{{ url_for('shop.add') }}" class="btn-orange">
+          <i class="bi bi-plus-circle-fill me-1"></i>Add Product
+        </a>
+        <a href="{{ url_for('shop.dashboard') }}" class="btn-outline">
+          <i class="bi bi-grid-3x3-gap-fill me-1"></i>Card View
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<section class="page-section">
+  <div class="container-xl">
+
+    <!-- KPI strip -->
+    <div class="at-kpi-strip">
+      <div class="at-kpi">
+        <div class="at-kpi-val" style="color:var(--teal)">₹{{ '{:,.0f}'.format(total_revenue) }}</div>
+        <div class="at-kpi-label">💰 Expected Revenue (30d)</div>
+      </div>
+      <div class="at-kpi">
+        <div class="at-kpi-val" style="color:var(--green)">₹{{ '{:,.0f}'.format(total_profit) }}</div>
+        <div class="at-kpi-label">📈 Expected Profit (30d)</div>
+      </div>
+      <div class="at-kpi">
+        <div class="at-kpi-val" style="color:{% if avg_health>=80 %}var(--teal){% elif avg_health>=65 %}var(--blue){% elif avg_health>=50 %}var(--yellow){% else %}var(--red){% endif %}">
+          {{ avg_health }}/100
+        </div>
+        <div class="at-kpi-label">❤️ Avg Health Score</div>
+      </div>
+      <div class="at-kpi">
+        <div class="at-kpi-val" style="color:{% if urgent_count>0 %}var(--red){% else %}var(--green){% endif %}">{{ urgent_count }}</div>
+        <div class="at-kpi-label">🚨 Urgent Orders</div>
+      </div>
+      <div class="at-kpi">
+        <div class="at-kpi-val" style="color:{% if discount_count>0 %}var(--yellow){% else %}var(--green){% endif %}">{{ discount_count }}</div>
+        <div class="at-kpi-label">🏷️ Need Discounts</div>
+      </div>
+    </div>
+
+    <!-- Table -->
+    <div class="card-white mt-4" style="padding:0;overflow:hidden">
+      <div class="table-responsive">
+        <table class="table at-table mb-0">
+          <thead>
+            <tr>
+              <th>Product</th>
+              <th>Visibility</th>
+              <th>Stock Status</th>
+              <th>Health</th>
+              <th>Customer Score</th>
+              <th>Order Advice</th>
+              <th>Pricing</th>
+              <th>Profit (30d)</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in rows %}
+            <tr class="{% if row.get('order_urgency')=='CRITICAL' %}at-urgent-row{% endif %}">
+
+              <!-- Product -->
+              <td>
+                <div class="at-product-name">
+                  {{ {'Fashion':'👗','Grocery':'🥗','Electronics':'📱','FMCG':'🧴','Seasonal':'❄️'}.get(row.category,'📦') }}
+                  {{ row.name }}
+                </div>
+                <div style="display:flex;align-items:center;gap:5px;margin-top:3px;flex-wrap:wrap">
+                  <span class="tag tag-gray" style="font-size:0.65rem">{{ row.category }}</span>
+                  {% if row.brand_name %}
+                  <span class="tag" style="font-size:0.65rem;background:#EEF2FF;color:#4F46E5">{{ row.brand_name }}</span>
+                  {% endif %}
+                  <span style="font-size:0.75rem;color:var(--text-muted)">₹{{ '{:,}'.format(row.price|int) }}</span>
+                </div>
+              </td>
+
+              <!-- Visibility -->
+              <td class="text-center">
+                <span class="tag {% if row.is_visible %}tag-teal{% else %}tag-gray{% endif %}" style="font-size:0.65rem">
+                  {% if row.is_visible %}<i class="bi bi-eye-fill me-1"></i>Visible
+                  {% else %}<i class="bi bi-eye-slash-fill me-1"></i>Hidden{% endif %}
+                </span>
+              </td>
+
+              <!-- Stock -->
+              <td>
+                {% if not row.get('_not_analysed') %}
+                <div style="font-weight:700;font-size:0.875rem">{{ row.stock|int }} units</div>
+                <span class="tag tag-{% if row.zone_color=='success' %}teal{% elif row.zone_color=='warning' %}yellow{% else %}red{% endif %}" style="font-size:0.65rem">{{ row.zone_label }}</span>
+                <div class="at-days-bar mt-1">
+                  <div class="at-days-fill" style="width:{{ [row.days_to_sell/60*100,100]|min }}%;background:{% if row.days_to_sell<7 %}var(--red){% elif row.days_to_sell<21 %}var(--yellow){% else %}var(--teal){% endif %}"></div>
+                </div>
+                <div style="font-size:0.72rem;color:var(--text-muted)">{{ row.days_to_sell }}d of stock left</div>
+                {% else %}
+                <span style="color:var(--text-muted);font-size:0.82rem">{{ row.stock|int }} units</span>
+                {% endif %}
+              </td>
+
+              <!-- Health -->
+              <td class="text-center">
+                {% if not row.get('_not_analysed') %}
+                <div class="at-score" style="color:{% if row.health_score>=80 %}var(--teal){% elif row.health_score>=65 %}var(--blue){% elif row.health_score>=50 %}var(--yellow){% else %}var(--red){% endif %}">{{ row.health_score }}</div>
+                <div class="at-score-sub">{{ row.health_grade }}</div>
+                {% else %}<span style="color:var(--text-muted)">—</span>{% endif %}
+              </td>
+
+              <!-- CSAT -->
+              <td class="text-center">
+                {% if not row.get('_not_analysed') %}
+                <div class="at-score" style="color:{% if row.csat_score>=85 %}var(--green){% elif row.csat_score>=70 %}var(--blue){% elif row.csat_score>=55 %}var(--yellow){% else %}var(--red){% endif %}">{{ row.csat_score }}</div>
+                <div class="at-score-sub">{{ row.csat_level }}</div>
+                {% else %}<span style="color:var(--text-muted)">—</span>{% endif %}
+              </td>
+
+              <!-- Order advice -->
+              <td>
+                {% if not row.get('_not_analysed') %}
+                <div class="tag {% if row.order_urgency in ('CRITICAL','HIGH') %}tag-red{% elif row.order_urgency=='MEDIUM' %}tag-yellow{% elif row.order_urgency=='LOW' %}tag-blue{% else %}tag-green{% endif %}" style="display:inline-block;white-space:nowrap">
+                  {% if row.order_action=='ORDER_URGENT' %}🔴 Order Urgently
+                  {% elif row.order_action=='ORDER_NOW' %}🟠 Order Now
+                  {% elif row.order_action=='ORDER_SOON' %}🟡 Order Soon
+                  {% elif row.order_action=='REDUCE_STOCK' %}🔵 Reduce Stock
+                  {% else %}🟢 Stock Fine{% endif %}
+                </div>
+                {% if row.order_qty > 0 %}
+                <div style="font-size:0.72rem;color:var(--text-muted);margin-top:4px">{{ row.order_qty }} units / {{ row.window_days }}d window</div>
+                {% endif %}
+                {% else %}
+                <span style="color:var(--text-muted);font-size:0.82rem">Not analysed</span>
+                {% endif %}
+              </td>
+
+              <!-- Pricing -->
+              <td>
+                {% if not row.get('_not_analysed') %}
+                {% if row.discount_pct > 0 %}
+                <span class="tag tag-yellow">🏷️ {{ row.discount_pct }}% OFF</span>
+                <div style="font-size:0.7rem;color:var(--text-muted);margin-top:3px">{{ row.discount_tier }}</div>
+                {% else %}
+                <span class="tag tag-green">✓ Full price</span>
+                {% endif %}
+                {% else %}<span style="color:var(--text-muted)">—</span>{% endif %}
+              </td>
+
+              <!-- Profit -->
+              <td>
+                {% if not row.get('_not_analysed') %}
+                <div style="font-weight:800;font-size:0.9rem;color:var(--green)">₹{{ '{:,}'.format(row.profit_30d|int) }}</div>
+                <div style="font-size:0.7rem;color:var(--text-muted)">{{ row.confidence }}% confident</div>
+                {% else %}<span style="color:var(--text-muted)">—</span>{% endif %}
+              </td>
+
+              <!-- Actions -->
+              <td>
+                <div class="at-actions">
+                  {% if not row.get('_not_analysed') %}
+                  <a href="{{ url_for('shop.forecast', product_id=row.id) }}" class="btn-teal" style="font-size:0.75rem;padding:6px 10px" title="View Analysis">
+                    <i class="bi bi-bar-chart-fill"></i>
+                  </a>
+                  {% else %}
+                  <a href="{{ url_for('shop.run_analysis', product_id=row.id) }}" class="btn-orange" style="font-size:0.75rem;padding:6px 10px" title="Run Analysis">
+                    <i class="bi bi-cpu-fill"></i>
+                  </a>
+                  {% endif %}
+                  <a href="{{ url_for('shop.run_analysis', product_id=row.id) }}" class="btn-outline" style="font-size:0.75rem;padding:6px 9px" title="Refresh">
+                    <i class="bi bi-arrow-clockwise"></i>
+                  </a>
+                  <a href="{{ url_for('shop.edit', product_id=row.id) }}" class="btn-outline" style="font-size:0.75rem;padding:6px 9px" title="Edit">
+                    <i class="bi bi-pencil-fill"></i>
+                  </a>
+                  <form method="POST" action="{{ url_for('shop.delete', product_id=row.id) }}"
+                        onsubmit="return confirm('Remove {{ row.name }}? This cannot be undone.')">
+                    <button type="submit" class="btn-delete-icon" title="Delete">
+                      <i class="bi bi-trash-fill"></i>
+                    </button>
+                  </form>
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div style="font-size:0.78rem;color:var(--text-muted);margin-top:10px;text-align:right">
+      ⬆️ Sorted by urgency (most urgent first). Click 🔄 to refresh AI analysis on any product.
+    </div>
+
+  </div>
+</section>
+{% endblock %}

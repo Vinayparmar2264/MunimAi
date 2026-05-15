@@ -1,0 +1,271 @@
+{% extends "base.html" %}
+{% block title %}MerchAI — Your Smart Retail Assistant{% endblock %}
+{% block content %}
+
+<!-- HERO -->
+<section class="hero-section">
+  <div class="hero-dots"></div>
+  <div class="container-xl position-relative">
+    <div class="row align-items-center g-5">
+      <div class="col-lg-6">
+        <div class="hero-badge"><i class="bi bi-stars me-1"></i> Technoverse Hackathon 2026 · Cognizant</div>
+        <h1 class="hero-title">
+          Run your shop<br/>
+          <span class="hero-highlight">smarter, not harder</span>
+        </h1>
+        <p class="hero-sub">
+          Tell MerchAI about your products and we'll tell you
+          exactly what to order, when to discount, and how to make more profit —
+          in plain, simple language.
+        </p>
+        <div class="hero-ctas">
+          {% if session.get('user_id') %}
+            {% if session.get('user_role') == 'customer' %}
+            <a href="{{ url_for('customer.home') }}" class="btn-orange btn-lg">
+              <i class="bi bi-geo-alt-fill me-2"></i>Find Shops Near Me
+            </a>
+            <a href="{{ url_for('customer.browse_shops') }}" class="btn-outline btn-lg">
+              <i class="bi bi-grid me-2"></i>Browse All Shops
+            </a>
+            {% else %}
+            <a href="{{ url_for('shopkeeper.my_shops') }}" class="btn-orange btn-lg">
+              <i class="bi bi-shop-window me-2"></i>My Shops
+            </a>
+            <a href="{{ url_for('shopkeeper.new_shop') }}" class="btn-outline btn-lg">
+              <i class="bi bi-plus-circle me-2"></i>Add New Shop
+            </a>
+            {% endif %}
+          {% else %}
+          <a href="{{ url_for('input_data') }}" class="btn-orange btn-lg">
+            <i class="bi bi-play-circle-fill me-2"></i>Try It Free
+          </a>
+          <a href="{{ url_for('auth.signup') }}" class="btn-outline btn-lg">
+            <i class="bi bi-person-plus me-2"></i>Create Account
+          </a>
+          {% endif %}
+        </div>
+
+        <!-- Role switcher for logged-out users -->
+        {% if not session.get('user_id') %}
+        <div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap">
+          <a href="{{ url_for('auth.signup') }}"
+             style="font-size:0.82rem;color:var(--orange);font-weight:700;text-decoration:none">
+            <i class="bi bi-shop me-1"></i>Sign up as Shopkeeper →
+          </a>
+          <span style="color:var(--text-light)">·</span>
+          <a href="{{ url_for('auth.customer_signup') }}"
+             style="font-size:0.82rem;color:var(--teal);font-weight:700;text-decoration:none">
+            <i class="bi bi-bag-heart me-1"></i>Sign up as Customer →
+          </a>
+        </div>
+        {% endif %}
+      </div>
+
+      <div class="col-lg-6 d-none d-lg-block">
+        <div class="hero-visual">
+          <div class="hv-card hv-main">
+            <div class="hv-label">📦 Recommended Order</div>
+            <div class="hv-num" style="color:var(--orange)">43 units</div>
+            <div class="hv-sub">for next 7 days · Smartphone X</div>
+          </div>
+          <div class="hv-card hv-left">
+            <div class="hv-label">❤️ Health Score</div>
+            <div class="hv-num" style="color:var(--teal)">88/100</div>
+            <div class="hv-sub">Excellent</div>
+          </div>
+          <div class="hv-card hv-right">
+            <div class="hv-label">📈 30-Day Profit</div>
+            <div class="hv-num" style="color:var(--green)">₹24,500</div>
+            <div class="hv-sub">up +12% with AI advice</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- STATS -->
+<section class="stats-strip">
+  <div class="container-xl">
+    <div class="row g-0">
+      {% for num, label in [('20%','More Revenue'),('50%','Less Wasted Stock'),('60%','Less Manual Work'),('5 Types','Products Supported'),('80K+','Data Records Trained On')] %}
+      <div class="col-6 col-md">
+        <div class="stat-item">
+          <div class="stat-num">{{ num }}</div>
+          <div class="stat-label">{{ label }}</div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<!-- HOW IT WORKS -->
+<section class="how-section">
+  <div class="container-xl">
+    <div class="text-center mb-5">
+      <div class="section-tag"><i class="bi bi-list-check me-1"></i> Simple Steps</div>
+      <h2 class="section-title">How does MerchAI work?</h2>
+      <p class="section-sub mx-auto">No training needed. Just fill in a form and get clear advice in seconds.</p>
+    </div>
+    <div class="row g-4">
+      {% for num, emoji, title, desc in [
+        ('1','📋','Enter your product details','Tell us the product name, price, how much you have in stock, and your recent sales numbers.'),
+        ('2','🤖','AI analyses everything','Our AI looks at your sales speed, stock levels, expiry date, and competitor prices to understand your situation.'),
+        ('3','💡','Get clear recommendations','You get simple, plain-English advice: order X units, apply Y% discount, or do nothing — explained clearly.'),
+        ('4','📊','See your full report','View your forecast, health score, customer satisfaction, and expected profit — all in one place.'),
+      ] %}
+      <div class="col-md-6 col-lg-3">
+        <div class="step-card">
+          <div class="step-num">{{ num }}</div>
+          <div class="step-icon-big">{{ emoji }}</div>
+          <h3>{{ title }}</h3>
+          <p>{{ desc }}</p>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<!-- NEW IN v6 -->
+<section style="background:var(--bg-soft);padding:70px 0">
+  <div class="container-xl">
+    <div class="text-center mb-5">
+      <div class="section-tag"><i class="bi bi-stars me-1"></i> New in v6</div>
+      <h2 class="section-title">Powerful new features</h2>
+      <p class="section-sub mx-auto">Everything from v5 preserved — plus a complete multi-shop and customer system.</p>
+    </div>
+    <div class="row g-4">
+      {% for emoji, title, desc, color in [
+        ('🏪','Multi-Shop Management','One account, unlimited shops. Each shop has completely separate products, analysis, and chatbot data — nothing ever mixes.','var(--orange)'),
+        ('📍','Customer Shop Discovery','Customers register with GPS location and instantly see shops within 1 km. Adjustable radius, name search, discount filters.','var(--teal)'),
+        ('👁️','Product Visibility Control','Hide or unhide any product per shop. Hidden items never appear to customers and stay hidden until you manually unhide them.','var(--blue)'),
+        ('🤖','Shop-Isolated AI Chatbot','Every shop has its own chatbot. It only reads that shop\'s products. Sensitive data like stock, cost, and margins is never revealed.','var(--purple)'),
+      ] %}
+      <div class="col-md-6 col-lg-3">
+        <div class="feature-card" style="border-top:3px solid {{ color }}">
+          <div class="feature-icon" style="font-size:2rem;margin-bottom:12px">{{ emoji }}</div>
+          <h3 style="font-size:1rem;font-weight:800;margin-bottom:8px">{{ title }}</h3>
+          <p style="font-size:0.85rem;color:var(--text-muted);line-height:1.6">{{ desc }}</p>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<!-- 3 PROBLEMS WE SOLVE -->
+<section style="padding:70px 0">
+  <div class="container-xl">
+    <div class="text-center mb-5">
+      <div class="section-tag"><i class="bi bi-bullseye me-1"></i> What We Fix</div>
+      <h2 class="section-title">3 things that cost retailers money every day</h2>
+    </div>
+    <div class="row g-4">
+      <div class="col-md-4">
+        <div class="feature-card fc-orange">
+          <div class="feature-icon">📉</div>
+          <h3>Running out of stock</h3>
+          <p>When popular items sell out, you lose customers and revenue. MerchAI tells you exactly when and how much to reorder.</p>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="feature-card fc-teal">
+          <div class="feature-icon">🗑️</div>
+          <h3>Products expiring unsold</h3>
+          <p>Stock that expires before it sells is pure loss. We compare your sales speed to expiry date and recommend the right discount at the right time.</p>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="feature-card fc-blue">
+          <div class="feature-icon">💸</div>
+          <h3>Wrong pricing decisions</h3>
+          <p>Discount too early and lose profit. Discount too late and waste stock. Our AI finds the perfect price using real demand data.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CATEGORY SUPPORT -->
+<section class="how-section" style="padding-top:50px">
+  <div class="container-xl">
+    <div class="text-center mb-5">
+      <div class="section-tag"><i class="bi bi-shop me-1"></i> Retail Types</div>
+      <h2 class="section-title">Works for 5 types of products</h2>
+      <p class="section-sub mx-auto">Each product type has different rules — our AI knows them all.</p>
+    </div>
+    <div class="row g-3">
+      {% for emoji, name, desc in [
+        ('👗','Fashion','Clothes, shoes, accessories — seasonal trends'),
+        ('🥗','Grocery','Food, dairy, bakery — short shelf life'),
+        ('📱','Electronics','Phones, gadgets — long lead times'),
+        ('🧴','FMCG','Shampoo, snacks — high competition'),
+        ('❄️','Seasonal','Festival items, winter gear — short selling window'),
+      ] %}
+      <div class="col-6 col-md">
+        <div class="cat-card">
+          <div class="cat-emoji">{{ emoji }}</div>
+          <div class="cat-name">{{ name }}</div>
+          <div class="cat-desc">{{ desc }}</div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<!-- ML MODEL STATS -->
+{% if models_loaded and model_meta %}
+<section style="background:var(--bg-soft);padding:50px 0">
+  <div class="container-xl">
+    <div class="text-center mb-4">
+      <div class="section-tag"><i class="bi bi-cpu me-1"></i> Real Machine Learning</div>
+      <h2 class="section-title" style="font-size:1.6rem">Trained on {{ '{:,}'.format(model_meta.get('records', 80000)) }} retail records</h2>
+    </div>
+    <div class="row g-3 justify-content-center">
+      {% set dm = model_meta.get('demand_model', {}) %}
+      {% set mm = model_meta.get('markdown_model', {}) %}
+      {% set hm = model_meta.get('health_model', {}) %}
+      {% for label, val, sub in [
+        ('Demand Forecast', 'R² ' + dm.get('r2','0.995')|string, 'MAPE ' + dm.get('mape_pct','6.6')|string + '% error'),
+        ('Markdown Decision', (mm.get('accuracy',0.999)|float * 100)|round|int|string + '% accuracy', 'F1 ' + mm.get('f1_weighted','0.999')|string),
+        ('Health Score', 'R² ' + hm.get('r2','0.996')|string, 'MAE ' + hm.get('mae','0.28')|string + ' pts'),
+        ('Price Elasticity', '5-fold CV', 'Per-category Ridge'),
+      ] %}
+      <div class="col-6 col-md-3">
+        <div class="card-white text-center" style="padding:18px">
+          <div style="font-family:var(--font-head);font-weight:900;font-size:1.3rem;color:var(--teal)">{{ val }}</div>
+          <div style="font-size:0.8rem;font-weight:700;color:var(--text-dark);margin:4px 0">{{ label }}</div>
+          <div style="font-size:0.72rem;color:var(--text-muted)">{{ sub }}</div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+{% endif %}
+
+<!-- CTA -->
+<section class="cta-section">
+  <div class="container-xl">
+    <h2>Ready to make smarter decisions?</h2>
+    <p>Enter your product details and get clear AI advice in under 30 seconds.</p>
+    <div class="d-flex gap-3 justify-content-center flex-wrap">
+      <a href="{{ url_for('input_data') }}" class="btn-white">
+        <i class="bi bi-arrow-right-circle-fill me-2"></i>Try It Free — No Login Needed
+      </a>
+      {% if not session.get('user_id') %}
+      <a href="{{ url_for('auth.customer_signup') }}"
+         style="background:rgba(255,255,255,0.15);color:white;border:1.5px solid rgba(255,255,255,0.4);
+                padding:12px 24px;border-radius:var(--r-pill);font-weight:700;font-size:0.9rem;
+                text-decoration:none;display:inline-flex;align-items:center;gap:8px;transition:all .2s">
+        <i class="bi bi-geo-alt-fill"></i>Find Shops Near Me
+      </a>
+      {% endif %}
+    </div>
+  </div>
+</section>
+
+{% endblock %}

@@ -1,0 +1,173 @@
+{% extends "base.html" %}
+{% block title %}My Products | MerchAI{% endblock %}
+{% block content %}
+
+<div class="page-hero">
+  <div class="container-xl">
+    <div class="d-flex align-items-center justify-content-between flex-wrap gap-3">
+      <div class="d-flex align-items-center gap-4">
+        <div class="page-hero-icon" style="background:linear-gradient(135deg,var(--orange),var(--orange-dark));color:white">
+          <i class="bi bi-grid-3x3-gap-fill"></i>
+        </div>
+        <div>
+          <h1 class="page-hero-title">My Products 🏪</h1>
+          <p class="page-hero-sub">Welcome back, <strong>{{ user_name }}</strong>! Here are all your products.</p>
+        </div>
+      </div>
+      <div class="d-flex gap-2 flex-wrap">
+        <a href="{{ url_for('shopkeeper.my_shops') }}" class="btn-teal">
+          <i class="bi bi-shop-window me-1"></i>Multi-Shop View
+        </a>
+        <a href="{{ url_for('shop.analysis_table') }}" class="btn-outline">
+          <i class="bi bi-table me-1"></i>Full Report
+        </a>
+        <a href="{{ url_for('shop.add') }}" class="btn-orange">
+          <i class="bi bi-plus-circle-fill me-2"></i>Add Product
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<section class="page-section">
+  <div class="container-xl">
+
+    {% if products %}
+    <div class="db-stat-strip">
+      <div class="db-stat">
+        <div class="db-stat-num" style="color:var(--orange)">{{ product_count }}</div>
+        <div class="db-stat-label">📦 Products</div>
+      </div>
+      <div class="db-stat">
+        {% set urgent = products | selectattr('_summary') | selectattr('_summary.order_urgency', 'in', ['CRITICAL','HIGH']) | list | length %}
+        <div class="db-stat-num" style="color:{% if urgent > 0 %}var(--red){% else %}var(--green){% endif %}">{{ urgent }}</div>
+        <div class="db-stat-label">🚨 Urgent Orders</div>
+      </div>
+      <div class="db-stat">
+        {% set disco = products | selectattr('_summary') | list | selectattr('_summary') | list %}
+        {% set disco_count = [] %}
+        {% for p in products %}{% if p._summary and p._summary.discount_pct > 0 %}{% set _ = disco_count.append(1) %}{% endif %}{% endfor %}
+        <div class="db-stat-num" style="color:{% if disco_count|length > 0 %}var(--yellow){% else %}var(--green){% endif %}">{{ disco_count|length }}</div>
+        <div class="db-stat-label">🏷️ Need Discounts</div>
+      </div>
+      <a href="{{ url_for('shop.analysis_table') }}" class="db-stat db-stat-link">
+        <div class="db-stat-num" style="color:var(--blue)">→</div>
+        <div class="db-stat-label">📊 Full Shop Report</div>
+      </a>
+    </div>
+
+    <div class="row g-4 mt-1">
+      {% for p in products %}
+      <div class="col-md-6 col-xl-4">
+        <div class="product-card">
+          <div class="pc-top">
+            <div class="pc-cat">
+              {{ {'Fashion':'👗','Grocery':'🥗','Electronics':'📱','FMCG':'🧴','Seasonal':'❄️'}.get(p.category,'📦') }}
+              <span class="tag tag-gray">{{ p.category }}</span>
+              {% if p.get('brand_name') %}
+              <span class="tag ms-1" style="background:#EEF2FF;color:#4F46E5;font-size:0.65rem">{{ p.brand_name }}</span>
+              {% endif %}
+              {% if p._summary %}
+              <span class="tag ms-auto {% if p._summary.health_score>=80 %}tag-teal{% elif p._summary.health_score>=65 %}tag-blue{% elif p._summary.health_score>=50 %}tag-yellow{% else %}tag-red{% endif %}">
+                ❤️ {{ p._summary.health_score }}/100
+              </span>
+              {% endif %}
+            </div>
+            <div class="pc-name">{{ p.product_name }}</div>
+            <div class="pc-price">₹{{ '{:,}'.format(p.current_price|int) }}</div>
+            <div class="pc-info">
+              <span>📦 {{ p.stock|int }} units</span>
+              <span>📅 {{ p.expiry_days }}d expiry</span>
+              {% if not p.get('is_visible', 1) %}
+              <span style="color:var(--text-light);font-size:0.72rem">
+                <i class="bi bi-eye-slash-fill me-1"></i>Hidden
+              </span>
+              {% endif %}
+            </div>
+          </div>
+
+          <div class="pc-divider"></div>
+
+          {% if p._summary %}
+          <div class="pc-analysis">
+            <div class="pc-row">
+              <span class="pc-row-label">📋 Order advice</span>
+              <span class="pc-row-val" style="color:{% if p._summary.order_action in ['ORDER_URGENT','ORDER_NOW'] %}var(--red){% elif p._summary.order_action=='ORDER_SOON' %}var(--yellow){% elif p._summary.order_action=='REDUCE_STOCK' %}var(--blue){% else %}var(--green){% endif %}">
+                {% if p._summary.order_action=='ORDER_URGENT' %}🔴 Order urgently
+                {% elif p._summary.order_action=='ORDER_NOW' %}🟠 Order now
+                {% elif p._summary.order_action=='ORDER_SOON' %}🟡 Order soon
+                {% elif p._summary.order_action=='REDUCE_STOCK' %}🔵 Reduce stock
+                {% else %}🟢 Fine{% endif %}
+              </span>
+            </div>
+            <div class="pc-row">
+              <span class="pc-row-label">🏷️ Pricing</span>
+              <span class="pc-row-val" style="color:{% if p._summary.discount_pct>0 %}var(--yellow){% else %}var(--green){% endif %}">
+                {% if p._summary.discount_pct > 0 %}Apply {{ p._summary.discount_pct }}% off{% else %}✓ Keep full price{% endif %}
+              </span>
+            </div>
+            <div class="pc-row">
+              <span class="pc-row-label">😊 Customer score</span>
+              <span class="pc-row-val" style="color:{% if p._summary.csat_score>=70 %}var(--teal){% elif p._summary.csat_score>=55 %}var(--yellow){% else %}var(--red){% endif %}">{{ p._summary.csat_score }}/100</span>
+            </div>
+            <div class="pc-analysed-at">Last updated: {{ p._summary.analysed_at }}</div>
+          </div>
+          {% else %}
+          <div class="pc-no-analysis">⚡ Not yet analysed — click "Analyse Now"</div>
+          {% endif %}
+
+          <div class="pc-divider"></div>
+          <div class="pc-actions">
+            {% if p._summary %}
+            <a href="{{ url_for('shop.forecast', product_id=p.id) }}"
+               class="btn-teal" style="font-size:0.82rem;padding:8px 14px;flex:1;justify-content:center">
+              <i class="bi bi-bar-chart-fill me-1"></i>View Analysis
+            </a>
+            {% else %}
+            <a href="{{ url_for('shop.run_analysis', product_id=p.id) }}"
+               class="btn-orange" style="font-size:0.82rem;padding:8px 14px;flex:1;justify-content:center">
+              <i class="bi bi-cpu-fill me-1"></i>Analyse Now
+            </a>
+            {% endif %}
+            <a href="{{ url_for('shop.run_analysis', product_id=p.id) }}"
+               class="btn-outline" style="font-size:0.82rem;padding:7px 11px" title="Refresh">
+              <i class="bi bi-arrow-clockwise"></i>
+            </a>
+            <a href="{{ url_for('shop.edit', product_id=p.id) }}"
+               class="btn-outline" style="font-size:0.82rem;padding:7px 11px" title="Edit">
+              <i class="bi bi-pencil-fill"></i>
+            </a>
+            <form method="POST" action="{{ url_for('shop.delete', product_id=p.id) }}"
+                  onsubmit="return confirm('Remove this product? This cannot be undone.')">
+              <button type="submit" class="btn-delete-icon" title="Delete">
+                <i class="bi bi-trash-fill"></i>
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+
+    {% else %}
+    <div class="db-empty">
+      <div class="db-empty-icon">🏪</div>
+      <h2 class="db-empty-title">No products yet!</h2>
+      <p class="db-empty-sub">
+        Add your first product to start getting AI-powered advice on what to order,
+        when to discount, and how to make more profit.
+      </p>
+      <div class="d-flex gap-3 justify-content-center flex-wrap">
+        <a href="{{ url_for('shopkeeper.my_shops') }}" class="btn-teal btn-lg">
+          <i class="bi bi-shop-window me-2"></i>Create a Shop
+        </a>
+        <a href="{{ url_for('shop.add') }}" class="btn-orange btn-lg">
+          <i class="bi bi-plus-circle-fill me-2"></i>Add Product Directly
+        </a>
+      </div>
+    </div>
+    {% endif %}
+
+  </div>
+</section>
+{% endblock %}
