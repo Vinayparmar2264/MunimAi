@@ -1,5 +1,5 @@
 """
-shopkeeper.py — MerchAI v6 Shopkeeper Blueprint
+shopkeeper.py — MunimAI v6 Shopkeeper Blueprint
 Multi-shop management: create/edit/delete shops, manage products per shop.
 
 Routes:
