@@ -1,5 +1,5 @@
 """
-customer.py — MerchAI v6 Customer Blueprint
+customer.py — MunimAI v6 Customer Blueprint
 
 Routes:
   GET  /customer/                     — home: nearby shops
