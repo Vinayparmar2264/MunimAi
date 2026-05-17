@@ -65,7 +65,7 @@ def signup():
         session["user_name"]  = user["name"]
         session["user_email"] = user["email"]
         session["user_role"]  = user["role"]
-        flash(f"Welcome to MerchAI, {user['name']}! Your account is ready.", "success")
+        flash(f"Welcome to MunimAI, {user['name']}! Your account is ready.", "success")
         return redirect(url_for("shopkeeper.my_shops"))
 
     return render_template("auth/signup.html")
