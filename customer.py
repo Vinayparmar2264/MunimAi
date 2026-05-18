@@ -46,7 +46,7 @@ def _get_session_location():
 # HOME — nearby shops discovery
 # ═══════════════════════════════════════════════════════════════
 
-@customer_bp.route("/")
+@customer_bp.route("/", endpoint="home")
 @login_required
 def home():
     lat, lon = _get_session_location()
@@ -95,7 +95,10 @@ def home():
                            discount_filter=discount_filter,
                            user_name=session.get("user_name", ""))
 
-
+@customer_bp.route("/dashboard", endpoint="dashboard")
+@login_required
+def dashboard():
+    return home()
 # ═══════════════════════════════════════════════════════════════
 # UPDATE LOCATION
 # ═══════════════════════════════════════════════════════════════
