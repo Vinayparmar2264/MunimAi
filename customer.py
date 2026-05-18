@@ -1,16 +1,15 @@
 """
-customer.py — MunimAI v6 Customer Blueprint
+customer.py — MunimAI Customer Blueprint
 
-Customer Features:
+Features:
+- Customer dashboard
 - Nearby shop discovery
-- Customer location management
-- Public product browsing
-- Shop-specific customer chatbot support
+- Shop browsing
+- Public product viewing
 - Product filtering
+- Customer location management
 - Distance calculation
 - Multi-shop safe isolation
-
-PostgreSQL/Supabase compatible
 """
 
 from flask import (
@@ -31,6 +30,7 @@ from database import (
     get_shop,
     get_public_shop_products,
     update_user_location,
+    _haversine
 )
 
 customer_bp = Blueprint(
@@ -40,9 +40,9 @@ customer_bp = Blueprint(
 )
 
 
-# ═══════════════════════════════════════════════════════════════
+# ============================================================
 # LOGIN REQUIRED
-# ═══════════════════════════════════════════════════════════════
+# ============================================================
 
 def login_required(f):
 
@@ -52,7 +52,7 @@ def login_required(f):
         if not session.get("user_id"):
 
             flash(
-                "Please log in to continue.",
+                "Please log in first.",
                 "warning"
             )
 
@@ -68,17 +68,11 @@ def login_required(f):
     return wrapper
 
 
-# ═══════════════════════════════════════════════════════════════
+# ============================================================
 # SESSION LOCATION
-# ═══════════════════════════════════════════════════════════════
+# ============================================================
 
 def _get_session_location():
-    """
-    Returns:
-        (lat, lon)
-        OR
-        (None, None)
-    """
 
     lat = session.get("user_lat")
     lon = session.get("user_lon")
@@ -94,9 +88,9 @@ def _get_session_location():
     return None, None
 
 
-# ═══════════════════════════════════════════════════════════════
-# CUSTOMER HOME / DASHBOARD
-# ═══════════════════════════════════════════════════════════════
+# ============================================================
+# HOME / DASHBOARD
+# ============================================================
 
 @customer_bp.route("/", endpoint="home")
 @login_required
@@ -141,7 +135,7 @@ def home():
             search_name=search
         )
 
-    # Name-only search
+    # Search by name
     elif search:
 
         shops = get_nearby_shops(
@@ -151,7 +145,7 @@ def home():
             search_name=search
         )
 
-    # Enrich shops
+    # Enrich shop data
     for shop in shops:
 
         products = get_public_shop_products(
@@ -178,7 +172,7 @@ def home():
             for p in products
         })
 
-        # Apply discount filter
+        # Discount filter
         if discount_filter:
 
             try:
@@ -197,6 +191,7 @@ def home():
     ]
 
     return render_template(
+
         "customer/nearby.html",
 
         shops=shops,
@@ -210,9 +205,11 @@ def home():
         ),
 
         radius=radius,
+
         search=search,
 
         category_filter=category_filter,
+
         discount_filter=discount_filter,
 
         user_name=session.get(
@@ -222,16 +219,16 @@ def home():
     )
 
 
-# Backward compatibility route
+# Backward compatibility
 @customer_bp.route("/dashboard", endpoint="dashboard")
 @login_required
 def dashboard():
     return home()
 
 
-# ═══════════════════════════════════════════════════════════════
+# ============================================================
 # UPDATE LOCATION
-# ═══════════════════════════════════════════════════════════════
+# ============================================================
 
 @customer_bp.route(
     "/update-location",
@@ -278,12 +275,12 @@ def update_location():
             url_for("customer.dashboard")
         )
 
-    # Save in session
+    # Session
     session["user_lat"] = lat
     session["user_lon"] = lon
     session["user_loc_name"] = loc_name
 
-    # Save in database
+    # Database
     uid = session.get("user_id")
 
     if uid:
@@ -305,7 +302,7 @@ def update_location():
         })
 
     flash(
-        f"Location updated to {loc_name or f'{lat:.4f}, {lon:.4f}'}",
+        "Location updated successfully.",
         "success"
     )
 
@@ -314,9 +311,9 @@ def update_location():
     )
 
 
-# ═══════════════════════════════════════════════════════════════
+# ============================================================
 # VIEW SHOP
-# ═══════════════════════════════════════════════════════════════
+# ============================================================
 
 @customer_bp.route(
     "/shops/<int:shop_id>",
@@ -339,7 +336,9 @@ def view_shop(shop_id):
             url_for("customer.dashboard")
         )
 
-    products = get_public_shop_products(shop_id)
+    products = get_public_shop_products(
+        shop_id
+    )
 
     # Filters
     category_filter = request.args.get(
@@ -362,15 +361,17 @@ def view_shop(shop_id):
         ""
     ).strip()
 
-    # Category
+    # Category filter
     if category_filter:
 
         products = [
+
             p for p in products
+
             if p["category"] == category_filter
         ]
 
-    # Discount
+    # Discount filter
     if min_discount:
 
         try:
@@ -378,14 +379,16 @@ def view_shop(shop_id):
             md = float(min_discount)
 
             products = [
+
                 p for p in products
+
                 if p.get("discount_pct", 0) >= md
             ]
 
         except ValueError:
             pass
 
-    # Expiry
+    # Expiry filter
     if max_expiry:
 
         try:
@@ -393,14 +396,16 @@ def view_shop(shop_id):
             me = int(max_expiry)
 
             products = [
+
                 p for p in products
+
                 if p.get("expiry_days", 9999) <= me
             ]
 
         except ValueError:
             pass
 
-    # Search
+    # Product search
     if search_product:
 
         sl = search_product.lower()
@@ -419,10 +424,14 @@ def view_shop(shop_id):
         ]
 
     # Categories
-    all_products = get_public_shop_products(shop_id)
+    all_products = get_public_shop_products(
+        shop_id
+    )
 
     all_categories = sorted({
+
         p["category"]
+
         for p in all_products
     })
 
@@ -437,8 +446,6 @@ def view_shop(shop_id):
         and shop.get("latitude") is not None
         and shop.get("longitude") is not None
     ):
-
-        from database import _haversine
 
         distance_km = round(
 
@@ -460,13 +467,17 @@ def view_shop(shop_id):
         "customer/shop_view.html",
 
         shop=shop,
+
         products=products,
 
         all_categories=all_categories,
 
         category_filter=category_filter,
+
         min_discount=min_discount,
+
         max_expiry=max_expiry,
+
         search_product=search_product,
 
         distance_km=distance_km,
@@ -478,9 +489,9 @@ def view_shop(shop_id):
     )
 
 
-# ═══════════════════════════════════════════════════════════════
+# ============================================================
 # BROWSE SHOPS
-# ═══════════════════════════════════════════════════════════════
+# ============================================================
 
 @customer_bp.route(
     "/shops",
@@ -498,11 +509,13 @@ def browse_shops():
     lat, lon = _get_session_location()
 
     try:
+
         radius = float(
             request.args.get("radius", 50.0)
         )
 
     except (TypeError, ValueError):
+
         radius = 50.0
 
     if lat is not None and lon is not None:
@@ -523,7 +536,7 @@ def browse_shops():
             search_name=search
         )
 
-    # Enrich
+    # Enrich shops
     for shop in shops:
 
         products = get_public_shop_products(
@@ -560,9 +573,11 @@ def browse_shops():
         ),
 
         radius=radius,
+
         search=search,
 
         category_filter="",
+
         discount_filter="",
 
         user_name=session.get(
@@ -571,4 +586,4 @@ def browse_shops():
         ),
 
         browse_mode=True
-  )
+    )
