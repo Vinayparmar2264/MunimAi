@@ -10,6 +10,7 @@ FINAL STABLE VERSION
 - Public product browsing
 - Safe distance calculations
 - Render compatible
+- Updated: Composite Unique Constraint for Multi-Role Auth (Shopkeeper + Customer)
 """
 
 import os
@@ -129,18 +130,19 @@ def init_db():
     conn = get_db()
     cur = conn.cursor()
 
-    # USERS
+    # USERS - Updated with composite unique constraint (email, role)
     cur.execute("""
     CREATE TABLE IF NOT EXISTS users (
         id SERIAL PRIMARY KEY,
         name TEXT NOT NULL,
-        email TEXT UNIQUE NOT NULL,
+        email TEXT NOT NULL,
         password_hash TEXT NOT NULL,
         role TEXT NOT NULL DEFAULT 'shopkeeper',
         latitude DOUBLE PRECISION,
         longitude DOUBLE PRECISION,
         location_name TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT users_email_role_key UNIQUE (email, role)
     );
     """)
 
@@ -301,6 +303,11 @@ def create_user(name, email, password_hash, role="shopkeeper"):
 
 
 def get_user_by_email(email):
+    """
+    LEGACY HELPER: Kept to prevent breaking older code paths.
+    If multiple roles exist for one email, this might return the first one found.
+    For new authentication, use get_user_by_email_and_role instead.
+    """
     conn = get_db()
     cur = dict_cursor(conn)
 
@@ -310,7 +317,30 @@ def get_user_by_email(email):
             latitude, longitude, location_name, created_at
         FROM users
         WHERE email=%s
+        ORDER BY id ASC
+        LIMIT 1
     """, (email.strip().lower(),))
+
+    row = _row_to_dict(cur.fetchone())
+    cur.close()
+    conn.close()
+    return row
+
+
+def get_user_by_email_and_role(email, role):
+    """
+    NEW HELPER: Safely isolates authentication between Shopkeepers and Customers.
+    """
+    conn = get_db()
+    cur = dict_cursor(conn)
+
+    cur.execute("""
+        SELECT
+            id, name, email, password_hash, role,
+            latitude, longitude, location_name, created_at
+        FROM users
+        WHERE email=%s AND role=%s
+    """, (email.strip().lower(), role))
 
     row = _row_to_dict(cur.fetchone())
     cur.close()
