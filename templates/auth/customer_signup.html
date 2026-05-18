@@ -204,35 +204,29 @@
 
               </div>
 
-              <div class="col-6">
+             <div class="col-6">
+  <input
+    type="text"
+    class="auth-input"
+    id="latVis"
+    placeholder="Latitude"
+    oninput="
+      document.getElementById('hidLat').value=this.value
+    "
+  />
+</div>
 
-                <input
-                  type="number"
-                  class="auth-input"
-                  id="latVis"
-                  placeholder="Latitude"
-                  step="0.0001"
-                  oninput="
-                    document.getElementById('hidLat').value=this.value
-                  "
-                />
-
-              </div>
-
-              <div class="col-6">
-
-                <input
-                  type="number"
-                  class="auth-input"
-                  id="lonVis"
-                  placeholder="Longitude"
-                  step="0.0001"
-                  oninput="
-                    document.getElementById('hidLon').value=this.value
-                  "
-                />
-
-              </div>
+<div class="col-6">
+  <input
+    type="text"
+    class="auth-input"
+    id="lonVis"
+    placeholder="Longitude"
+    oninput="
+      document.getElementById('hidLon').value=this.value
+    "
+  />
+</div>
 
             </div>
           </div>
