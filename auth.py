@@ -98,20 +98,13 @@ def login():
                     )
 
         if not errors and user:
-
             session.clear()
-
-            # Session data
-            session["user_id"] = user["id"]
-
-            session["user_name"] = user["name"]
-
-            session["user_email"] = user["email"]
-
-            session["role"] = user["role"]
-
-            # Compatibility
-            session["user_role"] = user["role"]
+            session["user_id"] = int(user["id"])
+            session["user_name"] = str(user["name"])
+            session["user_email"] = str(user["email"])
+            session["role"] = str(user["role"])
+            session["user_role"] = str(user["role"])
+            session.permanent = True]
 
             # Customer location
             if user.get("latitude") is not None:
@@ -472,17 +465,16 @@ def customer_signup():
         if not errors and user:
 
             session.clear()
-
-            session["user_id"] = user["id"]
-
-            session["user_name"] = user["name"]
-
-            session["user_email"] = user["email"]
-
-            session["role"] = user["role"]
-
-            # Compatibility
-            session["user_role"] = user["role"]
+            session["user_id"] = int(user["id"])
+            session["user_name"] = str(user["name"])
+            
+            session["user_email"] = str(user["email"])
+            
+            session["role"] = str(user["role"])
+            
+            session["user_role"] = str(user["role"])
+            
+            session.permanent = True
 
             if (
                 lat is not None
@@ -490,9 +482,9 @@ def customer_signup():
                 lon is not None
             ):
 
-                session["user_lat"] = lat
+                session["user_lat"] = float(lat)
 
-                session["user_lon"] = lon
+                session["user_lon"] = float(lon)
 
                 session["user_loc_name"] = (
                     location_name
