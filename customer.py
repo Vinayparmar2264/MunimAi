@@ -1,15 +1,15 @@
 """
 customer.py — MunimAI Customer Blueprint
 
-Features:
+Stable Production-Compatible Version
 - Customer dashboard
-- Nearby shop discovery
+- Nearby shops
 - Shop browsing
 - Public product viewing
-- Product filtering
-- Customer location management
+- Location support
 - Distance calculation
-- Multi-shop safe isolation
+- Safe null handling
+- Render compatible
 """
 
 from flask import (
@@ -77,12 +77,21 @@ def _get_session_location():
     lat = session.get("user_lat")
     lon = session.get("user_lon")
 
-    if lat is not None and lon is not None:
+    if (
+        lat is not None
+        and
+        lon is not None
+    ):
 
         try:
-            return float(lat), float(lon)
+
+            return (
+                float(lat),
+                float(lon)
+            )
 
         except (TypeError, ValueError):
+
             pass
 
     return None, None
@@ -99,14 +108,19 @@ def home():
     lat, lon = _get_session_location()
 
     try:
+
         radius = float(
             request.args.get("radius", 1.0)
         )
 
     except (TypeError, ValueError):
+
         radius = 1.0
 
-    radius = max(0.1, min(radius, 50.0))
+    radius = max(
+        0.1,
+        min(radius, 50.0)
+    )
 
     search = request.args.get(
         "search",
@@ -125,32 +139,82 @@ def home():
 
     shops = []
 
-    # Nearby search
-    if lat is not None and lon is not None:
+    # ========================================================
+    # SAFE SHOP LOADING
+    # ========================================================
 
-        shops = get_nearby_shops(
-            lat,
-            lon,
-            radius_km=radius,
-            search_name=search
-        )
+    # Nearby shops
+    if (
+        lat is not None
+        and
+        lon is not None
+    ):
 
-    # Search by name
+        try:
+
+            shops = get_nearby_shops(
+
+                lat,
+                lon,
+
+                radius_km=radius,
+
+                search_name=search
+            )
+
+        except Exception as e:
+
+            print(
+                "NEARBY SHOPS ERROR:",
+                str(e)
+            )
+
+            shops = []
+
+    # Search without location
     elif search:
 
-        shops = get_nearby_shops(
-            0,
-            0,
-            radius_km=99999,
-            search_name=search
-        )
+        try:
 
-    # Enrich shop data
+            shops = get_nearby_shops(
+
+                0,
+                0,
+
+                radius_km=99999,
+
+                search_name=search
+            )
+
+        except Exception as e:
+
+            print(
+                "SEARCH SHOPS ERROR:",
+                str(e)
+            )
+
+            shops = []
+
+    # ========================================================
+    # ENRICH SHOPS
+    # ========================================================
+
     for shop in shops:
 
-        products = get_public_shop_products(
-            shop["id"]
-        )
+        try:
+
+            products = get_public_shop_products(
+                shop["id"]
+            )
+
+        except Exception as e:
+
+            print(
+                "PRODUCT LOAD ERROR:",
+                str(e)
+            )
+
+            products = []
 
         shop["product_count"] = len(products)
 
@@ -168,8 +232,12 @@ def home():
         )
 
         shop["categories"] = list({
+
             p["category"]
+
             for p in products
+
+            if p.get("category")
         })
 
         # Discount filter
@@ -179,14 +247,21 @@ def home():
 
                 min_disc = float(discount_filter)
 
-                if shop["max_discount"] < min_disc:
+                if (
+                    shop["max_discount"]
+                    < min_disc
+                ):
+
                     shop["_filtered"] = True
 
             except ValueError:
+
                 pass
 
     shops = [
+
         s for s in shops
+
         if not s.get("_filtered")
     ]
 
@@ -219,10 +294,18 @@ def home():
     )
 
 
-# Backward compatibility
-@customer_bp.route("/dashboard", endpoint="dashboard")
+# ============================================================
+# BACKWARD COMPATIBILITY
+# ============================================================
+
+@customer_bp.route(
+    "/dashboard",
+    endpoint="dashboard"
+)
+
 @login_required
 def dashboard():
+
     return home()
 
 
@@ -285,19 +368,36 @@ def update_location():
 
     if uid:
 
-        update_user_location(
-            uid,
-            lat,
-            lon,
-            loc_name
-        )
+        try:
+
+            update_user_location(
+
+                uid,
+
+                lat,
+
+                lon,
+
+                loc_name
+            )
+
+        except Exception as e:
+
+            print(
+                "UPDATE LOCATION ERROR:",
+                str(e)
+            )
 
     if request.is_json:
 
         return jsonify({
+
             "success": True,
+
             "lat": lat,
+
             "lon": lon,
+
             "name": loc_name
         })
 
@@ -336,11 +436,25 @@ def view_shop(shop_id):
             url_for("customer.dashboard")
         )
 
-    products = get_public_shop_products(
-        shop_id
-    )
+    try:
 
-    # Filters
+        products = get_public_shop_products(
+            shop_id
+        )
+
+    except Exception as e:
+
+        print(
+            "PUBLIC PRODUCT ERROR:",
+            str(e)
+        )
+
+        products = []
+
+    # ========================================================
+    # FILTERS
+    # ========================================================
+
     category_filter = request.args.get(
         "category",
         ""
@@ -361,17 +475,18 @@ def view_shop(shop_id):
         ""
     ).strip()
 
-    # Category filter
+    # Category
     if category_filter:
 
         products = [
 
             p for p in products
 
-            if p["category"] == category_filter
+            if p.get("category")
+            == category_filter
         ]
 
-    # Discount filter
+    # Discount
     if min_discount:
 
         try:
@@ -382,13 +497,15 @@ def view_shop(shop_id):
 
                 p for p in products
 
-                if p.get("discount_pct", 0) >= md
+                if p.get("discount_pct", 0)
+                >= md
             ]
 
         except ValueError:
+
             pass
 
-    # Expiry filter
+    # Expiry
     if max_expiry:
 
         try:
@@ -399,13 +516,15 @@ def view_shop(shop_id):
 
                 p for p in products
 
-                if p.get("expiry_days", 9999) <= me
+                if p.get("expiry_days", 9999)
+                <= me
             ]
 
         except ValueError:
+
             pass
 
-    # Product search
+    # Search
     if search_product:
 
         sl = search_product.lower()
@@ -415,8 +534,13 @@ def view_shop(shop_id):
             p for p in products
 
             if (
-                sl in p["product_name"].lower()
+                sl in p.get(
+                    "product_name",
+                    ""
+                ).lower()
+
                 or
+
                 sl in (
                     p.get("brand_name") or ""
                 ).lower()
@@ -424,39 +548,54 @@ def view_shop(shop_id):
         ]
 
     # Categories
-    all_products = get_public_shop_products(
-        shop_id
-    )
-
     all_categories = sorted({
 
-        p["category"]
+        p.get("category")
 
-        for p in all_products
+        for p in products
+
+        if p.get("category")
     })
 
-    # Distance
+    # ========================================================
+    # DISTANCE
+    # ========================================================
+
     lat, lon = _get_session_location()
 
     distance_km = None
 
-    if (
-        lat is not None
-        and lon is not None
-        and shop.get("latitude") is not None
-        and shop.get("longitude") is not None
-    ):
+    try:
 
-        distance_km = round(
+        if (
+            lat is not None
+            and
+            lon is not None
+            and
+            shop.get("latitude") is not None
+            and
+            shop.get("longitude") is not None
+        ):
 
-            _haversine(
-                lat,
-                lon,
-                shop["latitude"],
-                shop["longitude"]
-            ),
+            distance_km = round(
 
-            2
+                _haversine(
+
+                    float(lat),
+                    float(lon),
+
+                    float(shop["latitude"]),
+                    float(shop["longitude"])
+                ),
+
+                2
+            )
+
+    except Exception as e:
+
+        print(
+            "SHOP DISTANCE ERROR:",
+            str(e)
         )
 
     # Save viewed shop
@@ -518,30 +657,59 @@ def browse_shops():
 
         radius = 50.0
 
-    if lat is not None and lon is not None:
+    shops = []
 
-        shops = get_nearby_shops(
-            lat,
-            lon,
-            radius_km=radius,
-            search_name=search
+    try:
+
+        if (
+            lat is not None
+            and
+            lon is not None
+        ):
+
+            shops = get_nearby_shops(
+
+                lat,
+                lon,
+
+                radius_km=radius,
+
+                search_name=search
+            )
+
+        else:
+
+            shops = get_nearby_shops(
+
+                0,
+                0,
+
+                radius_km=99999,
+
+                search_name=search
+            )
+
+    except Exception as e:
+
+        print(
+            "BROWSE SHOPS ERROR:",
+            str(e)
         )
 
-    else:
+        shops = []
 
-        shops = get_nearby_shops(
-            0,
-            0,
-            radius_km=99999,
-            search_name=search
-        )
-
-    # Enrich shops
+    # Enrich
     for shop in shops:
 
-        products = get_public_shop_products(
-            shop["id"]
-        )
+        try:
+
+            products = get_public_shop_products(
+                shop["id"]
+            )
+
+        except Exception:
+
+            products = []
 
         shop["product_count"] = len(products)
 
@@ -586,4 +754,4 @@ def browse_shops():
         ),
 
         browse_mode=True
-    )
+        )
