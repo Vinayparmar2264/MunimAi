@@ -754,4 +754,4 @@ def browse_shops():
         ),
 
         browse_mode=True
-        )
+    )
