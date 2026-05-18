@@ -78,6 +78,7 @@ def customer_signup():
         return redirect(url_for("customer.home"))
 
     if request.method == "POST":
+        print("[DEBUG] CUSTOMER SIGNUP FORM:", dict(request.form))
         name      = request.form.get("name", "").strip()
         email     = request.form.get("email", "").strip()
         password  = request.form.get("password", "")
@@ -98,12 +99,13 @@ def customer_signup():
             errors.append("Passwords do not match.")
 
         lat = lon = None
-        if latitude and longitude:
-            try:
-                lat = float(latitude)
-                lon = float(longitude)
-            except ValueError:
-                errors.append("Invalid location coordinates.")
+
+         if latitude.strip() != "" and longitude.strip() != "":
+             try:
+                 lat = float(latitude)
+                 lon = float(longitude)
+             except (TypeError, ValueError):
+                 errors.append("Invalid location coordinates.")
 
         if errors:
             return render_template("auth/customer_signup.html",
@@ -164,7 +166,7 @@ def login():
         session["user_role"]  = user.get("role", "shopkeeper")
 
         # Restore location for customers
-        if user.get("latitude"):
+        if user.get("latitude") is not None:
             session["user_lat"]      = user["latitude"]
             session["user_lon"]      = user["longitude"]
             session["user_loc_name"] = user.get("location_name", "")
