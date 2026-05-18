@@ -49,8 +49,14 @@ def login_required(f):
     @wraps(f)
     def wrapper(*args, **kwargs):
 
-        if not session.get("user_id"):
-
+        uid = session.get("user_id")
+        
+        try:
+            uid = int(uid)
+        except:
+            uid = None
+        
+        if not uid:
             flash(
                 "Please log in first.",
                 "warning"
