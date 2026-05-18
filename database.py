@@ -1,58 +1,58 @@
 """
-database.py — MerchAI PostgreSQL/Supabase Database Layer
+database.py — MunimAI PostgreSQL/Supabase Database Layer
 
-Upgraded from SQLite → PostgreSQL (Supabase compatible)
-WITHOUT breaking existing functionality.
-
-Supports:
-- users
-- multi-shop management
-- products
-- analyses
-- customer location
-- public customer product browsing
-- visibility controls
-- nearby shop discovery
-- multi-tenant isolation
-
-IMPORTANT:
-This version uses psycopg2 + Supabase PostgreSQL.
+FINAL STABLE VERSION
+- PostgreSQL / Supabase compatible
+- Render compatible
+- Preserves existing functionality
+- Multi-shop support
+- Customer support
+- Product analysis support
+- Public product browsing
 """
 
 import os
 import json
 import psycopg2
 import psycopg2.extras
+
 from math import radians, sin, cos, sqrt, atan2
+
+
+# ============================================================
+# DATABASE URL
+# ============================================================
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 
-# ═══════════════════════════════════════════════════════════════
-# DATABASE CONNECTION
-# ═══════════════════════════════════════════════════════════════
+# ============================================================
+# CONNECTION
+# ============================================================
 
 def get_db():
-    """
-    PostgreSQL connection for Supabase.
-    """
 
     if not DATABASE_URL:
-        raise Exception("DATABASE_URL environment variable missing.")
+        raise Exception(
+            "DATABASE_URL environment variable missing."
+        )
 
-    conn = psycopg2.connect(DATABASE_URL)
-
-    return conn
+    return psycopg2.connect(DATABASE_URL)
 
 
-# ═══════════════════════════════════════════════════════════════
-# DATABASE INITIALIZATION
-# ═══════════════════════════════════════════════════════════════
+def dict_cursor(conn):
+    return conn.cursor(
+        cursor_factory=psycopg2.extras.RealDictCursor
+    )
+
+
+# ============================================================
+# INIT DATABASE
+# ============================================================
 
 def init_db():
 
     conn = get_db()
-
     cur = conn.cursor()
 
     # USERS
@@ -61,13 +61,17 @@ def init_db():
         id SERIAL PRIMARY KEY,
 
         name TEXT NOT NULL,
+
         email TEXT UNIQUE NOT NULL,
+
         password_hash TEXT NOT NULL,
 
         role TEXT NOT NULL DEFAULT 'shopkeeper',
 
         latitude DOUBLE PRECISION,
+
         longitude DOUBLE PRECISION,
+
         location_name TEXT,
 
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -77,14 +81,19 @@ def init_db():
     # SHOPS
     cur.execute("""
     CREATE TABLE IF NOT EXISTS shops (
+
         id SERIAL PRIMARY KEY,
 
-        owner_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        owner_id INTEGER
+            REFERENCES users(id)
+            ON DELETE CASCADE,
 
         shop_name TEXT NOT NULL,
+
         shop_location TEXT NOT NULL,
 
         latitude DOUBLE PRECISION,
+
         longitude DOUBLE PRECISION,
 
         extra_notes TEXT DEFAULT '',
@@ -92,6 +101,7 @@ def init_db():
         is_active INTEGER DEFAULT 1,
 
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
     """)
@@ -99,17 +109,25 @@ def init_db():
     # PRODUCTS
     cur.execute("""
     CREATE TABLE IF NOT EXISTS products (
+
         id SERIAL PRIMARY KEY,
 
-        shop_id INTEGER REFERENCES shops(id) ON DELETE CASCADE,
-        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        user_id INTEGER
+            REFERENCES users(id)
+            ON DELETE CASCADE,
+
+        shop_id INTEGER
+            REFERENCES shops(id)
+            ON DELETE CASCADE,
 
         product_name TEXT NOT NULL,
+
         brand_name TEXT DEFAULT '',
 
         category TEXT NOT NULL,
 
         sales_last_week DOUBLE PRECISION NOT NULL,
+
         sales_last_month DOUBLE PRECISION NOT NULL,
 
         stock DOUBLE PRECISION NOT NULL,
@@ -117,6 +135,7 @@ def init_db():
         expiry_days INTEGER NOT NULL,
 
         current_price DOUBLE PRECISION NOT NULL,
+
         cost_price DOUBLE PRECISION NOT NULL,
 
         competitor_price DOUBLE PRECISION DEFAULT 0,
@@ -138,6 +157,7 @@ def init_db():
         is_visible INTEGER DEFAULT 1,
 
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
     """)
@@ -145,13 +165,20 @@ def init_db():
     # ANALYSES
     cur.execute("""
     CREATE TABLE IF NOT EXISTS analyses (
+
         id SERIAL PRIMARY KEY,
 
-        product_id INTEGER REFERENCES products(id) ON DELETE CASCADE,
+        product_id INTEGER
+            REFERENCES products(id)
+            ON DELETE CASCADE,
 
-        shop_id INTEGER REFERENCES shops(id) ON DELETE CASCADE,
+        user_id INTEGER
+            REFERENCES users(id)
+            ON DELETE CASCADE,
 
-        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        shop_id INTEGER
+            REFERENCES shops(id)
+            ON DELETE CASCADE,
 
         analysis_json TEXT NOT NULL,
 
@@ -164,22 +191,21 @@ def init_db():
     cur.close()
     conn.close()
 
-    print("[DB] PostgreSQL/Supabase initialized successfully")
+    print(
+        "[DB] PostgreSQL/Supabase initialized successfully"
+    )
 
 
-# ═══════════════════════════════════════════════════════════════
-# HELPERS
-# ═══════════════════════════════════════════════════════════════
-
-def dict_cursor(conn):
-    return conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-
-
-# ═══════════════════════════════════════════════════════════════
+# ============================================================
 # USER OPERATIONS
-# ═══════════════════════════════════════════════════════════════
+# ============================================================
 
-def create_user(name, email, password_hash, role="shopkeeper"):
+def create_user(
+        name,
+        email,
+        password_hash,
+        role="shopkeeper"
+):
 
     conn = get_db()
     cur = dict_cursor(conn)
@@ -188,7 +214,12 @@ def create_user(name, email, password_hash, role="shopkeeper"):
 
         cur.execute("""
             INSERT INTO users
-            (name, email, password_hash, role)
+            (
+                name,
+                email,
+                password_hash,
+                role
+            )
             VALUES (%s, %s, %s, %s)
             RETURNING *
         """, (
@@ -204,11 +235,15 @@ def create_user(name, email, password_hash, role="shopkeeper"):
 
         return dict(user), None
 
-    except Exception:
+    except Exception as e:
 
         conn.rollback()
 
-        return None, "An account with this email already exists."
+        print("\n========== CREATE USER ERROR ==========")
+        print(str(e))
+        print("=======================================\n")
+
+        return None, str(e)
 
     finally:
 
@@ -222,7 +257,8 @@ def get_user_by_email(email):
     cur = dict_cursor(conn)
 
     cur.execute("""
-        SELECT * FROM users
+        SELECT *
+        FROM users
         WHERE email=%s
     """, (
         email.strip().lower(),
@@ -242,7 +278,8 @@ def get_user_by_id(user_id):
     cur = dict_cursor(conn)
 
     cur.execute("""
-        SELECT * FROM users
+        SELECT *
+        FROM users
         WHERE id=%s
     """, (
         user_id,
@@ -256,10 +293,12 @@ def get_user_by_id(user_id):
     return dict(row) if row else None
 
 
-def update_user_location(user_id,
-                         latitude,
-                         longitude,
-                         location_name=""):
+def update_user_location(
+        user_id,
+        latitude,
+        longitude,
+        location_name=""
+):
 
     conn = get_db()
     cur = conn.cursor()
@@ -283,16 +322,18 @@ def update_user_location(user_id,
     conn.close()
 
 
-# ═══════════════════════════════════════════════════════════════
+# ============================================================
 # SHOP OPERATIONS
-# ═══════════════════════════════════════════════════════════════
+# ============================================================
 
-def create_shop(owner_id,
-                shop_name,
-                shop_location,
-                latitude=None,
-                longitude=None,
-                extra_notes=""):
+def create_shop(
+        owner_id,
+        shop_name,
+        shop_location,
+        latitude=None,
+        longitude=None,
+        extra_notes=""
+):
 
     conn = get_db()
     cur = conn.cursor()
@@ -388,13 +429,15 @@ def get_shop(shop_id, owner_id=None):
     return dict(row) if row else None
 
 
-def update_shop(shop_id,
-                owner_id,
-                shop_name,
-                shop_location,
-                latitude=None,
-                longitude=None,
-                extra_notes=""):
+def update_shop(
+        shop_id,
+        owner_id,
+        shop_name,
+        shop_location,
+        latitude=None,
+        longitude=None,
+        extra_notes=""
+):
 
     conn = get_db()
     cur = conn.cursor()
@@ -447,9 +490,9 @@ def delete_shop(shop_id, owner_id):
     conn.close()
 
 
-# ═══════════════════════════════════════════════════════════════
-# HAVERSINE
-# ═══════════════════════════════════════════════════════════════
+# ============================================================
+# DISTANCE
+# ============================================================
 
 def _haversine(lat1, lon1, lat2, lon2):
 
@@ -465,15 +508,20 @@ def _haversine(lat1, lon1, lat2, lon2):
         * sin(dlon / 2) ** 2
     )
 
-    c = 2 * atan2(sqrt(a), sqrt(1 - a))
+    c = 2 * atan2(
+        sqrt(a),
+        sqrt(1 - a)
+    )
 
     return R * c
 
 
-def get_nearby_shops(lat,
-                     lon,
-                     radius_km=1.0,
-                     search_name=""):
+def get_nearby_shops(
+        lat,
+        lon,
+        radius_km=1.0,
+        search_name=""
+):
 
     conn = get_db()
     cur = dict_cursor(conn)
@@ -510,7 +558,11 @@ def get_nearby_shops(lat,
 
         d = dict(row)
 
-        if d.get("latitude") and d.get("longitude"):
+        if (
+            d.get("latitude") is not None
+            and
+            d.get("longitude") is not None
+        ):
 
             dist = _haversine(
                 lat,
@@ -541,28 +593,46 @@ def get_nearby_shops(lat,
     return result
 
 
-# ═══════════════════════════════════════════════════════════════
+# ============================================================
 # PRODUCT OPERATIONS
-# ═══════════════════════════════════════════════════════════════
+# ============================================================
 
 PRODUCT_FIELDS = [
+
     "product_name",
+
     "brand_name",
+
     "category",
+
     "sales_last_week",
+
     "sales_last_month",
+
     "stock",
+
     "expiry_days",
+
     "current_price",
+
     "cost_price",
+
     "competitor_price",
+
     "season_factor",
+
     "demand_variability",
+
     "lead_time_days",
+
     "holding_cost_pct",
+
     "order_cost",
+
     "target_service_level",
+
     "reorder_window_days",
+
     "is_visible",
 ]
 
@@ -577,7 +647,9 @@ def add_product(user_id, data, shop_id=None):
 
     vals = [data.get(f) for f in PRODUCT_FIELDS]
 
-    placeholders = ", ".join(["%s"] * len(PRODUCT_FIELDS))
+    placeholders = ", ".join(
+        ["%s"] * len(PRODUCT_FIELDS)
+    )
 
     cols = ", ".join(PRODUCT_FIELDS)
 
@@ -610,10 +682,12 @@ def add_product(user_id, data, shop_id=None):
     return pid
 
 
-def update_product(product_id,
-                   user_id,
-                   data,
-                   shop_id=None):
+def update_product(
+        product_id,
+        user_id,
+        data,
+        shop_id=None
+):
 
     conn = get_db()
     cur = conn.cursor()
@@ -707,9 +781,11 @@ def get_product(product_id, user_id):
     return dict(row) if row else None
 
 
-def get_products_by_shop(shop_id,
-                         user_id,
-                         visible_only=False):
+def get_products_by_shop(
+        shop_id,
+        user_id,
+        visible_only=False
+):
 
     conn = get_db()
     cur = dict_cursor(conn)
@@ -747,8 +823,7 @@ def get_products_by_shop(shop_id,
     return [dict(r) for r in rows]
 
 
-def get_all_products(user_id,
-                     shop_id=None):
+def get_all_products(user_id, shop_id=None):
 
     conn = get_db()
     cur = dict_cursor(conn)
@@ -785,8 +860,7 @@ def get_all_products(user_id,
     return [dict(r) for r in rows]
 
 
-def count_products(user_id,
-                   shop_id=None):
+def count_products(user_id, shop_id=None):
 
     conn = get_db()
     cur = conn.cursor()
@@ -821,9 +895,11 @@ def count_products(user_id,
     return n
 
 
-def toggle_product_visibility(product_id,
-                              user_id,
-                              shop_id):
+def toggle_product_visibility(
+        product_id,
+        user_id,
+        shop_id
+):
 
     conn = get_db()
     cur = conn.cursor()
@@ -850,14 +926,16 @@ def toggle_product_visibility(product_id,
     conn.close()
 
 
-# ═══════════════════════════════════════════════════════════════
+# ============================================================
 # ANALYSIS OPERATIONS
-# ═══════════════════════════════════════════════════════════════
+# ============================================================
 
-def save_analysis(product_id,
-                  user_id,
-                  analysis,
-                  shop_id=None):
+def save_analysis(
+        product_id,
+        user_id,
+        analysis,
+        shop_id=None
+):
 
     conn = get_db()
     cur = conn.cursor()
@@ -893,8 +971,7 @@ def save_analysis(product_id,
     conn.close()
 
 
-def get_analysis(product_id,
-                 user_id):
+def get_analysis(product_id, user_id):
 
     conn = get_db()
     cur = dict_cursor(conn)
@@ -917,14 +994,17 @@ def get_analysis(product_id,
     conn.close()
 
     if row:
+
         d = dict(row)
-        return json.loads(d["analysis_json"])
+
+        return json.loads(
+            d["analysis_json"]
+        )
 
     return None
 
 
-def get_all_analyses(user_id,
-                     shop_id=None):
+def get_all_analyses(user_id, shop_id=None):
 
     conn = get_db()
     cur = dict_cursor(conn)
@@ -981,19 +1061,26 @@ def get_all_analyses(user_id,
         if pid not in results:
 
             results[pid] = {
+
                 "product_id": pid,
+
                 "product_name": row["product_name"],
+
                 "category": row["category"],
+
                 "analysed_at": row["created_at"],
-                "analysis": json.loads(row["analysis_json"]),
+
+                "analysis": json.loads(
+                    row["analysis_json"]
+                ),
             }
 
     return list(results.values())
 
 
-# ═══════════════════════════════════════════════════════════════
-# PUBLIC CUSTOMER PRODUCTS
-# ═══════════════════════════════════════════════════════════════
+# ============================================================
+# PUBLIC PRODUCTS
+# ============================================================
 
 def get_public_shop_products(shop_id):
 
@@ -1038,22 +1125,33 @@ def get_public_shop_products(shop_id):
         )
 
         public_items.append({
+
             "id": d["id"],
+
             "product_name": d["product_name"],
+
             "brand_name": d["brand_name"] or "",
+
             "category": d["category"],
+
             "current_price": d["current_price"],
+
             "competitor_price": d["competitor_price"],
+
             "expiry_days": d["expiry_days"],
 
-            "discount_pct": analysis.get("discount_pct", 0),
+            "discount_pct": analysis.get(
+                "discount_pct",
+                0
+            ),
 
             "discounted_price": analysis.get(
                 "discounted_price",
                 d["current_price"]
             ),
 
-            "is_expired": d["expiry_days"] <= 0,
+            "is_expired":
+                d["expiry_days"] <= 0,
 
             "expiry_status":
                 "Expired"
