@@ -1,197 +1,418 @@
 """
-auth.py — MerchAI v6 Authentication Blueprint
-Handles: /auth/login  /auth/signup  /auth/logout
-         /auth/customer-signup  (customer registration with location)
+auth.py — MunimAI Authentication Blueprint
 
-Roles:
-  shopkeeper — manages shops and products
-  customer   — browses shops and uses chatbot
+Features:
+- Shopkeeper signup/login
+- Customer signup/login
+- Password hashing
+- Session management
+- Customer geolocation support
+- PostgreSQL/Supabase compatible
 """
 
-from flask import (Blueprint, render_template, request, redirect,
-                   url_for, session, flash)
-from werkzeug.security import generate_password_hash, check_password_hash
-import re
-from database import create_user, get_user_by_email, update_user_location
+from flask import (
+    Blueprint,
+    render_template,
+    request,
+    redirect,
+    url_for,
+    flash,
+    session
+)
 
-auth_bp = Blueprint("auth", __name__, url_prefix="/auth")
+from werkzeug.security import (
+    generate_password_hash,
+    check_password_hash
+)
 
+from database import (
+    create_user,
+    get_user_by_email,
+    update_user_location
+)
 
-def _valid_email(email: str) -> bool:
-    return bool(re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email))
-
-
-def _valid_password(pw: str):
-    if len(pw) < 6:
-        return "Password must be at least 6 characters."
-    return None
-
-
-# ── SHOPKEEPER SIGN UP ──────────────────────────────────────────
-@auth_bp.route("/signup", methods=["GET", "POST"])
-def signup():
-    if session.get("user_id"):
-        return redirect(url_for("dashboard.index"))
-
-    if request.method == "POST":
-        name     = request.form.get("name", "").strip()
-        email    = request.form.get("email", "").strip()
-        password = request.form.get("password", "")
-        confirm  = request.form.get("confirm_password", "")
-
-        errors = []
-        if not name:
-            errors.append("Full name is required.")
-        if not _valid_email(email):
-            errors.append("Please enter a valid email address.")
-        pw_err = _valid_password(password)
-        if pw_err:
-            errors.append(pw_err)
-        if password != confirm:
-            errors.append("Passwords do not match.")
-
-        if errors:
-            return render_template("auth/signup.html",
-                                   errors=errors, name=name, email=email)
-
-        pw_hash = generate_password_hash(password, method="pbkdf2:sha256")
-        user, err = create_user(name, email, pw_hash, role="shopkeeper")
-
-        if err:
-            return render_template("auth/signup.html",
-                                   errors=[err], name=name, email=email)
-
-        session["user_id"]    = user["id"]
-        session["user_name"]  = user["name"]
-        session["user_email"] = user["email"]
-        session["user_role"]  = user["role"]
-        flash(f"Welcome to MunimAI, {user['name']}! Your account is ready.", "success")
-        return redirect(url_for("shopkeeper.my_shops"))
-
-    return render_template("auth/signup.html")
+auth_bp = Blueprint(
+    "auth",
+    __name__,
+    url_prefix="/auth"
+)
 
 
-# ── CUSTOMER SIGN UP ────────────────────────────────────────────
-@auth_bp.route("/customer-signup", methods=["GET", "POST"])
-def customer_signup():
-    if session.get("user_id"):
-        print("Redirecting to customer dashboard...")    
-        return redirect(url_for("customer.home"))
+# ═══════════════════════════════════════════════════════════════
+# LOGIN
+# ═══════════════════════════════════════════════════════════════
 
-    if request.method == "POST":
-        print("\n========== CUSTOMER SIGNUP DEBUG ==========")
-        print("FORM DATA:", dict(request.form))
-        name      = request.form.get("name", "").strip()
-        email     = request.form.get("email", "").strip()
-        password  = request.form.get("password", "")
-        confirm   = request.form.get("confirm_password", "")
-        latitude  = request.form.get("latitude", "").strip()
-        longitude = request.form.get("longitude", "").strip()
-        loc_name  = request.form.get("location_name", "").strip()
-
-        errors = []
-        if not name:
-            errors.append("Full name is required.")
-        if not _valid_email(email):
-            errors.append("Please enter a valid email address.")
-        pw_err = _valid_password(password)
-        if pw_err:
-            errors.append(pw_err)
-        if password != confirm:
-            errors.append("Passwords do not match.")
-
-        lat = lon = None
-
-        if latitude.strip() != "" and longitude.strip() != "":
-             try:
-                 lat = float(latitude)
-                 lon = float(longitude)
-             except (TypeError, ValueError):
-                 errors.append("Invalid location coordinates.")
-
-        if errors:
-            return render_template("auth/customer_signup.html",
-                                   errors=errors, name=name, email=email)
-
-        pw_hash = generate_password_hash(password, method="pbkdf2:sha256")
-        user, err = create_user(name, email, pw_hash, role="customer",print("Creating customer account..."))
-        print("USER:", user)
-        print("ERROR:", error)
-        if err:
-            return render_template("auth/customer_signup.html",
-                                   errors=[err], name=name, email=email)
-
-        # Save location if provided
-        if lat is not None and lon is not None:
-            update_user_location(user["id"], lat, lon, loc_name)
-            print("Location updated successfully")     
-
-        session["user_id"]       = user["id"]
-        session["user_name"]     = user["name"]
-        session["user_email"]    = user["email"]
-        session["user_role"]     = "customer"
-        session["user_lat"]      = lat
-        session["user_lon"]      = lon
-        session["user_loc_name"] = loc_name
-        flash(f"Welcome, {user['name']}! Find shops near you.", "success")
-        print("[DEBUG] CUSTOMER CREATED:", user)
-        return redirect(url_for("customer.home"))
-
-    return render_template("auth/customer_signup.html")
-
-
-# ── UNIFIED LOG IN ──────────────────────────────────────────────
 @auth_bp.route("/login", methods=["GET", "POST"])
 def login():
-    if session.get("user_id"):
-        role = session.get("user_role", "shopkeeper")
-        return redirect(url_for("customer.home") if role == "customer"
-                        else url_for("dashboard.index"))
 
     if request.method == "POST":
-        email    = request.form.get("email", "").strip()
-        password = request.form.get("password", "")
-        remember = request.form.get("remember")
 
-        if not email or not password:
-            return render_template("auth/login.html",
-                                   error="Please enter both email and password.",
-                                   email=email)
+        print("\n========== LOGIN DEBUG ==========")
+        print("FORM:", dict(request.form))
 
-        user = get_user_by_email(email)
-        if not user or not check_password_hash(user["password_hash"], password):
-            return render_template("auth/login.html",
-                                   error="Incorrect email or password.",
-                                   email=email)
+        email = request.form.get(
+            "email",
+            ""
+        ).strip().lower()
 
-        session.permanent = bool(remember)
-        session["user_id"]    = user["id"]
-        session["user_name"]  = user["name"]
-        session["user_email"] = user["email"]
-        session["user_role"]  = user.get("role", "shopkeeper")
+        password = request.form.get(
+            "password",
+            ""
+        )
 
-        # Restore location for customers
-        if user.get("latitude") is not None:
-            session["user_lat"]      = user["latitude"]
-            session["user_lon"]      = user["longitude"]
-            session["user_loc_name"] = user.get("location_name", "")
+        errors = []
 
-        flash(f"Welcome back, {user['name']}!", "success")
-        next_page = request.args.get("next")
-        if next_page:
-            return redirect(next_page)
-        role = user.get("role", "shopkeeper")
-        return redirect(url_for("customer.home") if role == "customer"
-                        else url_for("dashboard.index"))
+        if not email:
+            errors.append("Email is required.")
+
+        if not password:
+            errors.append("Password is required.")
+
+        if not errors:
+
+            user = get_user_by_email(email)
+
+            print("USER FOUND:", user)
+
+            if not user:
+
+                errors.append("Invalid email or password.")
+
+            else:
+
+                if not check_password_hash(
+                    user["password_hash"],
+                    password
+                ):
+
+                    errors.append("Invalid email or password.")
+
+        if not errors:
+
+            session.clear()
+
+            session["user_id"] = user["id"]
+            session["user_name"] = user["name"]
+            session["user_email"] = user["email"]
+            session["role"] = user["role"]
+
+            # Customer location
+            if user.get("latitude") is not None:
+
+                session["user_lat"] = user.get("latitude")
+                session["user_lon"] = user.get("longitude")
+
+                session["user_loc_name"] = (
+                    user.get("location_name") or ""
+                )
+
+            print("LOGIN SUCCESS")
+
+            # Redirect logic
+            next_url = request.args.get("next")
+
+            if next_url:
+                return redirect(next_url)
+
+            if user["role"] == "customer":
+
+                return redirect(
+                    url_for("customer.dashboard")
+                )
+
+            return redirect(
+                url_for("shopkeeper.dashboard")
+            )
+
+        for e in errors:
+            flash(e, "danger")
 
     return render_template("auth/login.html")
 
 
-# ── LOG OUT ─────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════
+# SHOPKEEPER SIGNUP
+# ═══════════════════════════════════════════════════════════════
+
+@auth_bp.route("/signup", methods=["GET", "POST"])
+def signup():
+
+    if request.method == "POST":
+
+        print("\n========== SHOPKEEPER SIGNUP ==========")
+        print("FORM:", dict(request.form))
+
+        name = request.form.get(
+            "name",
+            ""
+        ).strip()
+
+        email = request.form.get(
+            "email",
+            ""
+        ).strip().lower()
+
+        password = request.form.get(
+            "password",
+            ""
+        )
+
+        confirm_password = request.form.get(
+            "confirm_password",
+            ""
+        )
+
+        errors = []
+
+        if not name:
+            errors.append("Name is required.")
+
+        if not email:
+            errors.append("Email is required.")
+
+        if not password:
+            errors.append("Password is required.")
+
+        if len(password) < 6:
+            errors.append("Password must be at least 6 characters.")
+
+        if password != confirm_password:
+            errors.append("Passwords do not match.")
+
+        if not errors:
+
+            password_hash = generate_password_hash(password)
+
+            print("Creating shopkeeper account...")
+
+            user, error = create_user(
+                name=name,
+                email=email,
+                password_hash=password_hash,
+                role="shopkeeper"
+            )
+
+            print("USER:", user)
+            print("ERROR:", error)
+
+            if error:
+                errors.append(error)
+
+        if not errors:
+
+            session.clear()
+
+            session["user_id"] = user["id"]
+            session["user_name"] = user["name"]
+            session["user_email"] = user["email"]
+            session["role"] = user["role"]
+
+            flash(
+                "Account created successfully!",
+                "success"
+            )
+
+            return redirect(
+                url_for("shopkeeper.dashboard")
+            )
+
+        for e in errors:
+            flash(e, "danger")
+
+    return render_template("auth/signup.html")
+
+
+# ═══════════════════════════════════════════════════════════════
+# CUSTOMER SIGNUP
+# ═══════════════════════════════════════════════════════════════
+
+@auth_bp.route(
+    "/customer-signup",
+    methods=["GET", "POST"]
+)
+
+def customer_signup():
+
+    if request.method == "POST":
+
+        print("\n========== CUSTOMER SIGNUP DEBUG ==========")
+        print("FORM DATA:", dict(request.form))
+
+        name = request.form.get(
+            "name",
+            ""
+        ).strip()
+
+        email = request.form.get(
+            "email",
+            ""
+        ).strip().lower()
+
+        password = request.form.get(
+            "password",
+            ""
+        )
+
+        confirm_password = request.form.get(
+            "confirm_password",
+            ""
+        )
+
+        latitude = request.form.get(
+            "latitude",
+            ""
+        )
+
+        longitude = request.form.get(
+            "longitude",
+            ""
+        )
+
+        location_name = request.form.get(
+            "location_name",
+            ""
+        ).strip()
+
+        errors = []
+
+        # Validation
+        if not name:
+            errors.append("Name is required.")
+
+        if not email:
+            errors.append("Email is required.")
+
+        if not password:
+            errors.append("Password is required.")
+
+        if len(password) < 6:
+            errors.append(
+                "Password must be at least 6 characters."
+            )
+
+        if password != confirm_password:
+            errors.append("Passwords do not match.")
+
+        # Safe coordinate parsing
+        lat = lon = None
+
+        if (
+            latitude.strip() != ""
+            and longitude.strip() != ""
+        ):
+
+            try:
+
+                lat = float(latitude)
+                lon = float(longitude)
+
+            except (TypeError, ValueError):
+
+                errors.append(
+                    "Invalid location coordinates."
+                )
+
+        if not errors:
+
+            password_hash = generate_password_hash(
+                password
+            )
+
+            print("Creating customer account...")
+
+            user, error = create_user(
+                name=name,
+                email=email,
+                password_hash=password_hash,
+                role="customer"
+            )
+
+            print("USER:", user)
+            print("ERROR:", error)
+
+            if error:
+                errors.append(error)
+
+        # Save customer location
+        if not errors and user:
+
+            try:
+
+                if lat is not None and lon is not None:
+
+                    update_user_location(
+                        user["id"],
+                        lat,
+                        lon,
+                        location_name
+                    )
+
+                    print(
+                        "Location updated successfully"
+                    )
+
+            except Exception as e:
+
+                print(
+                    "LOCATION UPDATE ERROR:",
+                    str(e)
+                )
+
+        if not errors and user:
+
+            session.clear()
+
+            session["user_id"] = user["id"]
+            session["user_name"] = user["name"]
+            session["user_email"] = user["email"]
+            session["role"] = user["role"]
+
+            if lat is not None and lon is not None:
+
+                session["user_lat"] = lat
+                session["user_lon"] = lon
+
+                session["user_loc_name"] = (
+                    location_name
+                )
+
+            flash(
+                "Customer account created successfully!",
+                "success"
+            )
+
+            print(
+                "Redirecting to customer dashboard..."
+            )
+
+            return redirect(
+                url_for("customer.dashboard")
+            )
+
+        print("SIGNUP ERRORS:", errors)
+
+        for e in errors:
+            flash(e, "danger")
+
+    return render_template(
+        "auth/customer_signup.html"
+    )
+
+
+# ═══════════════════════════════════════════════════════════════
+# LOGOUT
+# ═══════════════════════════════════════════════════════════════
+
 @auth_bp.route("/logout")
 def logout():
-    name = session.get("user_name", "")
-    role = session.get("user_role", "shopkeeper")
+
     session.clear()
-    flash(f"You've been logged out{', ' + name if name else ''}. See you soon!", "info")
-    return redirect(url_for("auth.login"))
+
+    flash(
+        "Logged out successfully.",
+        "info"
+    )
+
+    return redirect(
+        url_for("auth.login")
+                 )
