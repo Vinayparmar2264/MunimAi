@@ -639,8 +639,7 @@ def view_shop(shop_id):
 # ============================================================
 
 @customer_bp.route(
-    "/shops",
-    endpoint="shops"
+    "/shops"
 )
 
 @login_required
