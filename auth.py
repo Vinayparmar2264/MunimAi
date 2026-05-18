@@ -100,7 +100,7 @@ def customer_signup():
 
         lat = lon = None
 
-         if latitude.strip() != "" and longitude.strip() != "":
+        if latitude.strip() != "" and longitude.strip() != "":
              try:
                  lat = float(latitude)
                  lon = float(longitude)
