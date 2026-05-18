@@ -36,12 +36,17 @@ from database import init_db
 load_dotenv()
 
 app = Flask(__name__)
-app.secret_key = os.getenv("SECRET_KEY", "merch_ai_real_ml_v6_2026")
+app.secret_key = "munimai_secret_key"
 
-# Session hardening for deployment/testing
-app.config["PERMANENT_SESSION_LIFETIME"] = __import__("datetime").timedelta(days=30)
+app.config["SESSION_COOKIE_SECURE"] = False
+
 app.config["SESSION_COOKIE_HTTPONLY"] = True
+
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+
+app.config["SESSION_COOKIE_DOMAIN"] = None
+
+app.config["SESSION_REFRESH_EACH_REQUEST"] = True
 app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024
 
 # SQLAlchemy config (Supabase/Postgres when DATABASE_URL is present, SQLite fallback otherwise)
