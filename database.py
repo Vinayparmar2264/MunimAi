@@ -800,4 +800,104 @@ def get_all_analyses(user_id, shop_id=None):
                 a.created_at,
                 p.product_name,
                 p.category
-    
+            FROM analyses a
+            JOIN products p
+            ON p.id = a.product_id
+            WHERE a.user_id=%s
+            ORDER BY a.created_at DESC
+        """, (user_id,))
+
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+
+    results = {}
+    for row in rows:
+        pid = row["product_id"]
+        if pid not in results:
+            try:
+                analysis = json.loads(row["analysis_json"])
+            except Exception:
+                analysis = {}
+
+            results[pid] = {
+                "product_id": pid,
+                "product_name": row["product_name"],
+                "category": row["category"],
+                "analysed_at": row["created_at"],
+                "analysis": analysis,
+            }
+
+    return list(results.values())
+
+
+# ============================================================
+# PUBLIC / CUSTOMER VIEWS
+# ============================================================
+def get_public_shop_products(shop_id):
+    conn = get_db()
+    cur = dict_cursor(conn)
+
+    cur.execute("""
+        SELECT
+            p.id,
+            p.product_name,
+            p.brand_name,
+            p.category,
+            p.current_price,
+            p.competitor_price,
+            p.expiry_days,
+            p.is_visible,
+            a.analysis_json
+        FROM products p
+        LEFT JOIN analyses a
+            ON a.product_id = p.id
+        WHERE p.shop_id=%s
+        AND p.is_visible=1
+        ORDER BY p.product_name
+    """, (shop_id,))
+
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+
+    public_items = []
+    for row in rows:
+        d = dict(row)
+
+        try:
+            analysis = json.loads(d["analysis_json"]) if d.get("analysis_json") else {}
+        except Exception:
+            analysis = {}
+
+        expiry_days = d.get("expiry_days", 0) or 0
+        current_price = d.get("current_price", 0) or 0
+
+        public_items.append({
+            "id": d["id"],
+            "product_name": d["product_name"],
+            "brand_name": d["brand_name"] or "",
+            "category": d["category"],
+            "current_price": current_price,
+            "competitor_price": d["competitor_price"] or 0,
+            "expiry_days": expiry_days,
+            "discount_pct": analysis.get("discount_pct", 0),
+            "discounted_price": analysis.get("discounted_price", current_price),
+            "is_expired": expiry_days <= 0,
+            "expiry_status": (
+                "Expired" if expiry_days <= 0
+                else "Expiring soon" if expiry_days <= 7
+                else "Fresh"
+            ),
+        })
+
+    return public_items
+
+
+# Backward-compatibility aliases
+def get_visible_products(shop_id):
+    return get_public_shop_products(shop_id)
+
+
+def get_public_shop_data(shop_id):
+    return get_public_shop_products(shop_id)
