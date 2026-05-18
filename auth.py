@@ -104,7 +104,7 @@ def login():
             session["user_email"] = str(user["email"])
             session["role"] = str(user["role"])
             session["user_role"] = str(user["role"])
-            session.permanent = True]
+            session.permanent = True
 
             # Customer location
             if user.get("latitude") is not None:
