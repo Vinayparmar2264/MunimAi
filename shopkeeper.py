@@ -229,7 +229,11 @@ def shop_products(shop_id):
                 "order_action": d.get("order_action", "—"),
                 "discount_pct": d.get("discount_pct", 0),
                 "csat_score":   d.get("csat_score", "—"),
-                "analysed_at":  a.get("analysed_at", "")[:16],
+                "analysed_at": (
+                                a.get("analysed_at").strftime("%Y-%m-%d %H:%M")
+                                if a.get("analysed_at")
+                                else ""
+                            ),
             }
         else:
             p["_summary"] = None
@@ -515,7 +519,11 @@ def shop_analysis_table(shop_id):
                 "zone_label":   d.get("zone_label", "—"),
                 "zone_color":   d.get("zone_color", "success"),
                 "days_to_sell": d.get("days_to_sell", 0),
-                "analysed_at":  a.get("analysed_at", "")[:16],
+                "analysed_at": (
+                    a.get("analysed_at").strftime("%Y-%m-%d %H:%M")
+                    if a.get("analysed_at")
+                    else ""
+                ),
                 "confidence":   d.get("confidence_pct", 0),
             })
         else:
