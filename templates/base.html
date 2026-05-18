@@ -38,7 +38,7 @@
           </a>
         </li>
         <li class="nav-item">
-          <a class="nav-link" href="{{ url_for('customer.shops') }}">
+          <a class="nav-link" href="{{ url_for('customer.browse_shops') }}">
             <i class="bi bi-grid me-1"></i>All Shops
           </a>
         </li>
@@ -117,7 +117,7 @@
             <li><a class="dropdown-item" href="{{ url_for('customer.home') }}">
               <i class="bi bi-geo-alt me-2"></i>Nearby Shops
             </a></li>
-            <li><a class="dropdown-item" href="{{ url_for('customer.shops') }}">
+            <li><a class="dropdown-item" href="{{ url_for('customer.browse_shops') }}">
               <i class="bi bi-grid me-2"></i>Browse All Shops
             </a></li>
             {% else %}
