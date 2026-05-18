@@ -75,10 +75,12 @@ def signup():
 @auth_bp.route("/customer-signup", methods=["GET", "POST"])
 def customer_signup():
     if session.get("user_id"):
+        print("Redirecting to customer dashboard...")    
         return redirect(url_for("customer.home"))
 
     if request.method == "POST":
-        
+        print("\n========== CUSTOMER SIGNUP DEBUG ==========")
+        print("FORM DATA:", dict(request.form))
         name      = request.form.get("name", "").strip()
         email     = request.form.get("email", "").strip()
         password  = request.form.get("password", "")
@@ -112,8 +114,9 @@ def customer_signup():
                                    errors=errors, name=name, email=email)
 
         pw_hash = generate_password_hash(password, method="pbkdf2:sha256")
-        user, err = create_user(name, email, pw_hash, role="customer")
-
+        user, err = create_user(name, email, pw_hash, role="customer",print("Creating customer account..."))
+        print("USER:", user)
+        print("ERROR:", error)
         if err:
             return render_template("auth/customer_signup.html",
                                    errors=[err], name=name, email=email)
@@ -121,6 +124,7 @@ def customer_signup():
         # Save location if provided
         if lat is not None and lon is not None:
             update_user_location(user["id"], lat, lon, loc_name)
+            print("Location updated successfully")     
 
         session["user_id"]       = user["id"]
         session["user_name"]     = user["name"]
