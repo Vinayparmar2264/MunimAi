@@ -7,7 +7,6 @@
 
     <div class="auth-card" style="max-width:480px">
 
-      <!-- Logo -->
       <div class="auth-logo">
         <div class="brand-logo">
           <i class="bi bi-shop"></i>
@@ -18,7 +17,6 @@
         </span>
       </div>
 
-      <!-- Heading -->
       <h1 class="auth-title">
         Find shops near you 🛍️
       </h1>
@@ -28,25 +26,23 @@
         compare prices, and get AI-powered shopping assistance.
       </p>
 
-      <!-- Errors -->
-      {% if errors %}
-      <div class="auth-err">
-        <i class="bi bi-exclamation-triangle-fill me-2"></i>
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        <div class="auth-err" style="background: #fef2f2; color: #dc2626; padding: 12px; border-radius: 8px; margin-bottom: 16px; border: 1px solid #fecaca;">
+          <i class="bi bi-exclamation-triangle-fill me-2"></i>
+          {% for category, message in messages %}
+            <div style="margin-bottom: 4px;">{{ message }}</div>
+          {% endfor %}
+        </div>
+        {% endif %}
+      {% endwith %}
 
-        {% for e in errors %}
-          <div>{{ e }}</div>
-        {% endfor %}
-      </div>
-      {% endif %}
-
-      <!-- FORM -->
       <form
         method="POST"
         action="{{ url_for('auth.customer_signup') }}"
         id="customerSignupForm"
       >
 
-        <!-- NAME -->
         <div class="auth-field">
 
           <label class="form-label">
@@ -70,7 +66,6 @@
           </div>
         </div>
 
-        <!-- EMAIL -->
         <div class="auth-field">
 
           <label class="form-label">
@@ -94,7 +89,6 @@
           </div>
         </div>
 
-        <!-- PASSWORD -->
         <div class="auth-field">
 
           <label class="form-label">
@@ -129,7 +123,6 @@
           </div>
         </div>
 
-        <!-- CONFIRM PASSWORD -->
         <div class="auth-field">
 
           <label class="form-label">
@@ -163,7 +156,6 @@
           <div class="pw-match-hint" id="pwMatch"></div>
         </div>
 
-        <!-- LOCATION -->
         <div class="auth-field">
 
           <label class="form-label">
@@ -173,7 +165,6 @@
             </span>
           </label>
 
-          <!-- Detect Button -->
           <button
             type="button"
             class="btn-teal w-100 mb-2"
@@ -184,7 +175,6 @@
             Detect My Location Automatically
           </button>
 
-          <!-- Status -->
           <div
             id="locStatus"
             style="
@@ -196,7 +186,6 @@
             "
           ></div>
 
-          <!-- Manual Location -->
           <div id="manualLoc" style="display:none">
 
             <div class="row g-2">
@@ -248,7 +237,6 @@
             </div>
           </div>
 
-          <!-- Manual Toggle -->
           <button
             type="button"
             style="
@@ -268,14 +256,12 @@
             Enter location manually instead
           </button>
 
-          <!-- Hidden Inputs -->
           <input type="hidden" name="latitude" id="hidLat"/>
           <input type="hidden" name="longitude" id="hidLon"/>
           <input type="hidden" name="location_name" id="locName"/>
 
         </div>
 
-        <!-- SUBMIT -->
         <button
           type="submit"
           class="btn-orange auth-btn"
@@ -286,12 +272,10 @@
 
       </form>
 
-      <!-- Divider -->
       <div class="auth-divider">
         <span>or</span>
       </div>
 
-      <!-- Shopkeeper -->
       <a
         href="{{ url_for('auth.signup') }}"
         class="btn-outline w-100"
@@ -301,7 +285,6 @@
         Sign up as a Shopkeeper instead
       </a>
 
-      <!-- Login -->
       <div class="auth-switch">
         Already have an account?
         <a href="{{ url_for('auth.login') }}">
