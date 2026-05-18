@@ -8,6 +8,7 @@ FINAL STABLE VERSION
 - PostgreSQL/Supabase compatible
 - Render compatible
 - Preserves existing functionality
+- UPDATED: Fixes redirect BuildErrors and handles Multi-Role login
 """
 
 from flask import (
@@ -28,6 +29,7 @@ from werkzeug.security import (
 from database import (
     create_user,
     get_user_by_email,
+    get_user_by_email_and_role,  # Added the new helper
     update_user_location
 )
 
@@ -46,7 +48,6 @@ auth_bp = Blueprint(
     "/login",
     methods=["GET", "POST"]
 )
-
 def login():
 
     if request.method == "POST":
@@ -54,15 +55,11 @@ def login():
         print("\n========== LOGIN DEBUG ==========")
         print("FORM:", dict(request.form))
 
-        email = request.form.get(
-            "email",
-            ""
-        ).strip().lower()
-
-        password = request.form.get(
-            "password",
-            ""
-        )
+        email = request.form.get("email", "").strip().lower()
+        password = request.form.get("password", "")
+        
+        # Capture role if your frontend form provides it (e.g., from a dropdown or radio button)
+        role = request.form.get("role", "").strip().lower()
 
         errors = []
 
@@ -75,27 +72,20 @@ def login():
         user = None
 
         if not errors:
-
-            user = get_user_by_email(email)
+            # If the frontend sent a role, use the strict check
+            if role in ["shopkeeper", "customer"]:
+                user = get_user_by_email_and_role(email, role)
+            else:
+                # Fallback for older forms that don't pass a role yet
+                user = get_user_by_email(email)
 
             print("USER FOUND:", user)
 
             if not user:
-
-                errors.append(
-                    "Invalid email or password."
-                )
-
+                errors.append("Invalid credentials or account does not exist for this role.")
             else:
-
-                if not check_password_hash(
-                    user["password_hash"],
-                    password
-                ):
-
-                    errors.append(
-                        "Invalid email or password."
-                    )
+                if not check_password_hash(user["password_hash"], password):
+                    errors.append("Invalid email or password.")
 
         if not errors and user:
             session.clear()
@@ -108,38 +98,19 @@ def login():
 
             # Customer location
             if user.get("latitude") is not None:
-
-                session["user_lat"] = (
-                    user.get("latitude")
-                )
-
-                session["user_lon"] = (
-                    user.get("longitude")
-                )
-
-                session["user_loc_name"] = (
-                    user.get("location_name") or ""
-                )
+                session["user_lat"] = user.get("latitude")
+                session["user_lon"] = user.get("longitude")
+                session["user_loc_name"] = user.get("location_name") or ""
 
             print("LOGIN SUCCESS")
 
             # Redirect logic
             next_url = request.args.get("next")
-
             if next_url:
                 return redirect(next_url)
 
-            # Customer
-            if user["role"] == "customer":
-
-                return redirect(
-                    url_for("customer.dashboard")
-                )
-
-            # Shopkeeper
-            return redirect(
-                url_for("shopkeeper.dashboard")
-            )
+            # Centralized redirect using your app.py dashboard shim
+            return redirect(url_for("dashboard.index"))
 
         print("LOGIN ERRORS:", errors)
 
@@ -159,7 +130,6 @@ def login():
     "/signup",
     methods=["GET", "POST"]
 )
-
 def signup():
 
     if request.method == "POST":
@@ -167,70 +137,35 @@ def signup():
         print("\n========== SHOPKEEPER SIGNUP ==========")
         print("FORM:", dict(request.form))
 
-        name = request.form.get(
-            "name",
-            ""
-        ).strip()
-
-        email = request.form.get(
-            "email",
-            ""
-        ).strip().lower()
-
-        password = request.form.get(
-            "password",
-            ""
-        )
-
-        confirm_password = request.form.get(
-            "confirm_password",
-            ""
-        )
+        name = request.form.get("name", "").strip()
+        email = request.form.get("email", "").strip().lower()
+        password = request.form.get("password", "")
+        confirm_password = request.form.get("confirm_password", "")
 
         errors = []
 
         # Validation
         if not name:
             errors.append("Name is required.")
-
         if not email:
             errors.append("Email is required.")
-
         if not password:
             errors.append("Password is required.")
-
         if len(password) < 6:
-
-            errors.append(
-                "Password must be at least 6 characters."
-            )
-
+            errors.append("Password must be at least 6 characters.")
         if password != confirm_password:
-
-            errors.append(
-                "Passwords do not match."
-            )
+            errors.append("Passwords do not match.")
 
         user = None
 
         if not errors:
-
-            password_hash = generate_password_hash(
-                password
-            )
-
-            print(
-                "Creating shopkeeper account..."
-            )
+            password_hash = generate_password_hash(password)
+            print("Creating shopkeeper account...")
 
             user, error = create_user(
-
                 name=name,
-
                 email=email,
-
                 password_hash=password_hash,
-
                 role="shopkeeper"
             )
 
@@ -241,28 +176,17 @@ def signup():
                 errors.append(error)
 
         if not errors and user:
-
             session.clear()
-
             session["user_id"] = user["id"]
-
             session["user_name"] = user["name"]
-
             session["user_email"] = user["email"]
-
             session["role"] = user["role"]
-
-            # Compatibility
             session["user_role"] = user["role"]
 
-            flash(
-                "Shopkeeper account created successfully!",
-                "success"
-            )
-
-            return redirect(
-                url_for("shopkeeper.dashboard")
-            )
+            flash("Shopkeeper account created successfully!", "success")
+            
+            # Fixed Route Name
+            return redirect(url_for("dashboard.index"))
 
         print("SHOPKEEPER ERRORS:", errors)
 
@@ -282,131 +206,63 @@ def signup():
     "/customer-signup",
     methods=["GET", "POST"]
 )
-
 def customer_signup():
 
     if request.method == "POST":
 
-        print(
-            "\n========== CUSTOMER SIGNUP DEBUG =========="
-        )
+        print("\n========== CUSTOMER SIGNUP DEBUG ==========")
+        print("FORM DATA:", dict(request.form))
 
-        print(
-            "FORM DATA:",
-            dict(request.form)
-        )
-
-        name = request.form.get(
-            "name",
-            ""
-        ).strip()
-
-        email = request.form.get(
-            "email",
-            ""
-        ).strip().lower()
-
-        password = request.form.get(
-            "password",
-            ""
-        )
-
-        confirm_password = request.form.get(
-            "confirm_password",
-            ""
-        )
-
-        latitude = request.form.get(
-            "latitude",
-            ""
-        )
-
-        longitude = request.form.get(
-            "longitude",
-            ""
-        )
-
-        location_name = request.form.get(
-            "location_name",
-            ""
-        ).strip()
+        name = request.form.get("name", "").strip()
+        email = request.form.get("email", "").strip().lower()
+        password = request.form.get("password", "")
+        confirm_password = request.form.get("confirm_password", "")
+        latitude = request.form.get("latitude", "")
+        longitude = request.form.get("longitude", "")
+        location_name = request.form.get("location_name", "").strip()
 
         errors = []
 
         # ====================================================
         # VALIDATION
         # ====================================================
-
         if not name:
             errors.append("Name is required.")
-
         if not email:
             errors.append("Email is required.")
-
         if not password:
             errors.append("Password is required.")
-
         if len(password) < 6:
-
-            errors.append(
-                "Password must be at least 6 characters."
-            )
-
+            errors.append("Password must be at least 6 characters.")
         if password != confirm_password:
-
-            errors.append(
-                "Passwords do not match."
-            )
+            errors.append("Passwords do not match.")
 
         # ====================================================
         # LOCATION PARSING
         # ====================================================
-
         lat = None
         lon = None
 
-        if (
-            str(latitude).strip() != ""
-            and
-            str(longitude).strip() != ""
-        ):
-
+        if str(latitude).strip() != "" and str(longitude).strip() != "":
             try:
-
                 lat = float(latitude)
-
                 lon = float(longitude)
-
             except (TypeError, ValueError):
-
-                errors.append(
-                    "Invalid location coordinates."
-                )
+                errors.append("Invalid location coordinates.")
 
         # ====================================================
         # CREATE USER
         # ====================================================
-
         user = None
 
         if not errors:
-
-            password_hash = generate_password_hash(
-                password
-            )
-
-            print(
-                "Creating customer account..."
-            )
+            password_hash = generate_password_hash(password)
+            print("Creating customer account...")
 
             user, error = create_user(
-
                 name=name,
-
                 email=email,
-
                 password_hash=password_hash,
-
                 role="customer"
             )
 
@@ -414,94 +270,42 @@ def customer_signup():
             print("ERROR:", error)
 
             if error:
-
-                print(
-                    "CUSTOMER SIGNUP ERROR:",
-                    error
-                )
-
+                print("CUSTOMER SIGNUP ERROR:", error)
                 errors.append(error)
 
         # ====================================================
         # UPDATE LOCATION
         # ====================================================
-
         if not errors and user:
-
             try:
-
-                if (
-                    lat is not None
-                    and
-                    lon is not None
-                ):
-
-                    update_user_location(
-
-                        user["id"],
-
-                        lat,
-
-                        lon,
-
-                        location_name
-                    )
-
-                    print(
-                        "Location updated successfully"
-                    )
-
+                if lat is not None and lon is not None:
+                    update_user_location(user["id"], lat, lon, location_name)
+                    print("Location updated successfully")
             except Exception as e:
-
-                print(
-                    "LOCATION UPDATE ERROR:",
-                    str(e)
-                )
+                print("LOCATION UPDATE ERROR:", str(e))
 
         # ====================================================
         # LOGIN CUSTOMER
         # ====================================================
-
         if not errors and user:
-
             session.clear()
             session["user_id"] = int(user["id"])
             session["user_name"] = str(user["name"])
-            
             session["user_email"] = str(user["email"])
-            
             session["role"] = str(user["role"])
-            
             session["user_role"] = str(user["role"])
-            
             session.permanent = True
 
-            if (
-                lat is not None
-                and
-                lon is not None
-            ):
-
+            if lat is not None and lon is not None:
                 session["user_lat"] = float(lat)
-
                 session["user_lon"] = float(lon)
+                session["user_loc_name"] = location_name
 
-                session["user_loc_name"] = (
-                    location_name
-                )
-
-            flash(
-                "Customer account created successfully!",
-                "success"
-            )
-
-            print(
-                "Redirecting to customer dashboard..."
-            )
-
-            return redirect(
-                url_for("customer.dashboard")
-            )
+            flash("Customer account created successfully!", "success")
+            print("Redirecting to customer dashboard...")
+            
+            # Fixed Route Name
+            return redirect(url_for("dashboard.index"))
 
         print("SIGNUP ERRORS:", errors)
 
@@ -519,14 +323,6 @@ def customer_signup():
 
 @auth_bp.route("/logout")
 def logout():
-
     session.clear()
-
-    flash(
-        "Logged out successfully.",
-        "info"
-    )
-
-    return redirect(
-        url_for("auth.login")
-    )
+    flash("Logged out successfully.", "info")
+    return redirect(url_for("auth.login"))
