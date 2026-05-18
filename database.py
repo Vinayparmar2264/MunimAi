@@ -3,6 +3,7 @@ database.py — MunimAI PostgreSQL/Supabase Database Layer
 
 FINAL STABLE VERSION
 - PostgreSQL / Supabase compatible
+- Keeps existing helper names used by current blueprints
 - Multi-shop support
 - Customer support
 - Product analysis support
@@ -13,16 +14,47 @@ FINAL STABLE VERSION
 
 import os
 import json
+from datetime import datetime, date
+
 import psycopg2
 import psycopg2.extras
+
 from math import radians, sin, cos, sqrt, atan2
+
+
+# ============================================================
+# DATABASE URL
+# ============================================================
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 
 # ============================================================
-# CONNECTION
+# CONNECTION HELPERS
 # ============================================================
+
+def _normalize_db_url(url: str) -> str:
+    """
+    Normalize common PostgreSQL connection URL variants.
+    - postgres:// -> postgresql://
+    - add sslmode=require for Supabase if missing
+    """
+    if not url:
+        return url
+
+    db_url = url.strip()
+
+    if db_url.startswith("postgres://"):
+        db_url = db_url.replace("postgres://", "postgresql://", 1)
+
+    # Supabase often requires SSL.
+    # If sslmode is missing, add it.
+    if "supabase.co" in db_url and "sslmode=" not in db_url:
+        joiner = "&" if "?" in db_url else "?"
+        db_url = f"{db_url}{joiner}sslmode=require"
+
+    return db_url
+
 
 def get_db():
     """
@@ -31,15 +63,47 @@ def get_db():
     if not DATABASE_URL:
         raise Exception("DATABASE_URL environment variable missing.")
 
-    db_url = DATABASE_URL.strip()
-    if db_url.startswith("postgres://"):
-        db_url = db_url.replace("postgres://", "postgresql://", 1)
-
+    db_url = _normalize_db_url(DATABASE_URL)
     return psycopg2.connect(db_url, connect_timeout=10)
 
 
 def dict_cursor(conn):
     return conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+
+# ============================================================
+# SERIALIZATION HELPERS
+# ============================================================
+
+def _serialize_value(value):
+    """
+    Convert datetime/date objects to strings so old code paths
+    that slice / serialize values do not break.
+    """
+    if isinstance(value, datetime):
+        return value.strftime("%Y-%m-%d %H:%M:%S")
+    if isinstance(value, date):
+        return value.isoformat()
+    return value
+
+
+def _row_to_dict(row):
+    if row is None:
+        return None
+
+    if isinstance(row, dict):
+        out = dict(row)
+    else:
+        out = dict(row)
+
+    for k, v in list(out.items()):
+        out[k] = _serialize_value(v)
+
+    return out
+
+
+def _rows_to_dicts(rows):
+    return [_row_to_dict(r) for r in rows]
 
 
 # ============================================================
@@ -130,14 +194,14 @@ def init_db():
     CREATE TABLE IF NOT EXISTS analyses (
         id SERIAL PRIMARY KEY,
         product_id INTEGER REFERENCES products(id) ON DELETE CASCADE,
-        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
         shop_id INTEGER REFERENCES shops(id) ON DELETE CASCADE,
+        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
         analysis_json TEXT NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
     """)
 
-    # Compatibility safety for older databases
+    # Compatibility safety for existing databases
     _ensure_columns(cur, "users", {
         "role": "TEXT NOT NULL DEFAULT 'shopkeeper'",
         "latitude": "DOUBLE PRECISION",
@@ -185,8 +249,8 @@ def init_db():
 
     _ensure_columns(cur, "analyses", {
         "product_id": "INTEGER",
-        "user_id": "INTEGER",
         "shop_id": "INTEGER",
+        "user_id": "INTEGER",
         "analysis_json": "TEXT",
         "created_at": "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
     })
@@ -210,16 +274,19 @@ def create_user(name, email, password_hash, role="shopkeeper"):
             INSERT INTO users
             (name, email, password_hash, role)
             VALUES (%s, %s, %s, %s)
-            RETURNING *
+            RETURNING
+                id, name, email, password_hash, role,
+                latitude, longitude, location_name, created_at
         """, (
             name.strip(),
             email.strip().lower(),
             password_hash,
             role
         ))
-        user = cur.fetchone()
+
+        user = _row_to_dict(cur.fetchone())
         conn.commit()
-        return dict(user), None
+        return user, None
 
     except Exception as e:
         conn.rollback()
@@ -236,29 +303,37 @@ def create_user(name, email, password_hash, role="shopkeeper"):
 def get_user_by_email(email):
     conn = get_db()
     cur = dict_cursor(conn)
+
     cur.execute("""
-        SELECT *
+        SELECT
+            id, name, email, password_hash, role,
+            latitude, longitude, location_name, created_at
         FROM users
         WHERE email=%s
     """, (email.strip().lower(),))
-    row = cur.fetchone()
+
+    row = _row_to_dict(cur.fetchone())
     cur.close()
     conn.close()
-    return dict(row) if row else None
+    return row
 
 
 def get_user_by_id(user_id):
     conn = get_db()
     cur = dict_cursor(conn)
+
     cur.execute("""
-        SELECT *
+        SELECT
+            id, name, email, password_hash, role,
+            latitude, longitude, location_name, created_at
         FROM users
         WHERE id=%s
     """, (user_id,))
-    row = cur.fetchone()
+
+    row = _row_to_dict(cur.fetchone())
     cur.close()
     conn.close()
-    return dict(row) if row else None
+    return row
 
 
 def update_user_location(user_id, latitude, longitude, location_name=""):
@@ -288,6 +363,7 @@ def update_user_location(user_id, latitude, longitude, location_name=""):
 def create_shop(owner_id, shop_name, shop_location, latitude=None, longitude=None, extra_notes=""):
     conn = get_db()
     cur = conn.cursor()
+
     cur.execute("""
         INSERT INTO shops
         (
@@ -308,6 +384,7 @@ def create_shop(owner_id, shop_name, shop_location, latitude=None, longitude=Non
         longitude,
         extra_notes.strip()
     ))
+
     shop_id = cur.fetchone()[0]
     conn.commit()
     cur.close()
@@ -318,6 +395,7 @@ def create_shop(owner_id, shop_name, shop_location, latitude=None, longitude=Non
 def get_shops_by_owner(owner_id):
     conn = get_db()
     cur = dict_cursor(conn)
+
     cur.execute("""
         SELECT *
         FROM shops
@@ -325,10 +403,11 @@ def get_shops_by_owner(owner_id):
         AND is_active=1
         ORDER BY created_at DESC
     """, (owner_id,))
-    rows = cur.fetchall()
+
+    rows = _rows_to_dicts(cur.fetchall())
     cur.close()
     conn.close()
-    return [dict(r) for r in rows]
+    return rows
 
 
 def get_shop(shop_id, owner_id=None):
@@ -351,23 +430,16 @@ def get_shop(shop_id, owner_id=None):
             AND is_active=1
         """, (shop_id,))
 
-    row = cur.fetchone()
+    row = _row_to_dict(cur.fetchone())
     cur.close()
     conn.close()
-    return dict(row) if row else None
+    return row
 
 
-def update_shop(
-    shop_id,
-    owner_id,
-    shop_name,
-    shop_location,
-    latitude=None,
-    longitude=None,
-    extra_notes=""
-):
+def update_shop(shop_id, owner_id, shop_name, shop_location, latitude=None, longitude=None, extra_notes=""):
     conn = get_db()
     cur = conn.cursor()
+
     cur.execute("""
         UPDATE shops
         SET
@@ -388,6 +460,7 @@ def update_shop(
         shop_id,
         owner_id
     ))
+
     conn.commit()
     cur.close()
     conn.close()
@@ -396,31 +469,39 @@ def update_shop(
 def delete_shop(shop_id, owner_id):
     conn = get_db()
     cur = conn.cursor()
+
     cur.execute("""
         UPDATE shops
         SET is_active=0
         WHERE id=%s
         AND owner_id=%s
-    """, (shop_id, owner_id))
+    """, (
+        shop_id,
+        owner_id
+    ))
+
     conn.commit()
     cur.close()
     conn.close()
 
 
 # ============================================================
-# DISTANCE / LOCATION
+# DISTANCE
 # ============================================================
 
 def _haversine(lat1, lon1, lat2, lon2):
     R = 6371
+
     dlat = radians(lat2 - lat1)
     dlon = radians(lon2 - lon1)
+
     a = (
         sin(dlat / 2) ** 2
         + cos(radians(lat1))
         * cos(radians(lat2))
         * sin(dlon / 2) ** 2
     )
+
     c = 2 * atan2(sqrt(a), sqrt(1 - a))
     return R * c
 
@@ -452,7 +533,7 @@ def get_nearby_shops(lat, lon, radius_km=1.0, search_name=""):
     result = []
 
     for row in rows:
-        d = dict(row)
+        d = _row_to_dict(row)
 
         if d.get("latitude") is not None and d.get("longitude") is not None:
             try:
@@ -587,11 +668,13 @@ def update_product(product_id, user_id, data, shop_id=None):
 def delete_product(product_id, user_id):
     conn = get_db()
     cur = conn.cursor()
+
     cur.execute("""
         DELETE FROM products
         WHERE id=%s
         AND user_id=%s
     """, (product_id, user_id))
+
     conn.commit()
     cur.close()
     conn.close()
@@ -600,23 +683,21 @@ def delete_product(product_id, user_id):
 def get_product(product_id, user_id):
     conn = get_db()
     cur = dict_cursor(conn)
+
     cur.execute("""
         SELECT *
         FROM products
         WHERE id=%s
         AND user_id=%s
     """, (product_id, user_id))
-    row = cur.fetchone()
+
+    row = _row_to_dict(cur.fetchone())
     cur.close()
     conn.close()
-    return dict(row) if row else None
+    return row
 
 
 def get_products_by_shop(shop_id, user_id, visible_only=False):
-    """
-    Fetch products for a specific shop.
-    If visible_only=True, only return is_visible=1 products (customer-facing).
-    """
     conn = get_db()
     cur = dict_cursor(conn)
 
@@ -637,14 +718,13 @@ def get_products_by_shop(shop_id, user_id, visible_only=False):
             ORDER BY updated_at DESC
         """, (shop_id, user_id))
 
-    rows = cur.fetchall()
+    rows = _rows_to_dicts(cur.fetchall())
     cur.close()
     conn.close()
-    return [dict(r) for r in rows]
+    return rows
 
 
 def get_all_products(user_id, shop_id=None):
-    """Fetch all products for a user, optionally filtered by shop."""
     conn = get_db()
     cur = dict_cursor(conn)
 
@@ -664,10 +744,10 @@ def get_all_products(user_id, shop_id=None):
             ORDER BY updated_at DESC
         """, (user_id,))
 
-    rows = cur.fetchall()
+    rows = _rows_to_dicts(cur.fetchall())
     cur.close()
     conn.close()
-    return [dict(r) for r in rows]
+    return rows
 
 
 def count_products(user_id, shop_id=None):
@@ -697,6 +777,7 @@ def count_products(user_id, shop_id=None):
 def toggle_product_visibility(product_id, user_id, shop_id):
     conn = get_db()
     cur = conn.cursor()
+
     cur.execute("""
         UPDATE products
         SET is_visible =
@@ -708,6 +789,7 @@ def toggle_product_visibility(product_id, user_id, shop_id):
         AND user_id=%s
         AND shop_id=%s
     """, (product_id, user_id, shop_id))
+
     conn.commit()
     cur.close()
     conn.close()
@@ -751,6 +833,7 @@ def save_analysis(product_id, user_id, analysis, shop_id=None):
 def get_analysis(product_id, user_id):
     conn = get_db()
     cur = dict_cursor(conn)
+
     cur.execute("""
         SELECT *
         FROM analyses
@@ -759,21 +842,22 @@ def get_analysis(product_id, user_id):
         ORDER BY created_at DESC
         LIMIT 1
     """, (product_id, user_id))
+
     row = cur.fetchone()
     cur.close()
     conn.close()
 
     if row:
-        d = dict(row)
+        d = _row_to_dict(row)
         try:
             return json.loads(d["analysis_json"])
         except Exception:
             return None
+
     return None
 
 
 def get_all_analyses(user_id, shop_id=None):
-    """Fetch latest analysis for every product of this user, optionally filtered by shop."""
     conn = get_db()
     cur = dict_cursor(conn)
 
@@ -812,8 +896,10 @@ def get_all_analyses(user_id, shop_id=None):
     conn.close()
 
     results = {}
+
     for row in rows:
         pid = row["product_id"]
+
         if pid not in results:
             try:
                 analysis = json.loads(row["analysis_json"])
@@ -824,7 +910,7 @@ def get_all_analyses(user_id, shop_id=None):
                 "product_id": pid,
                 "product_name": row["product_name"],
                 "category": row["category"],
-                "analysed_at": row["created_at"],
+                "analysed_at": _serialize_value(row["created_at"]),
                 "analysis": analysis,
             }
 
@@ -832,8 +918,9 @@ def get_all_analyses(user_id, shop_id=None):
 
 
 # ============================================================
-# PUBLIC / CUSTOMER VIEWS
+# PUBLIC CUSTOMER PRODUCTS
 # ============================================================
+
 def get_public_shop_products(shop_id):
     conn = get_db()
     cur = dict_cursor(conn)
@@ -847,11 +934,10 @@ def get_public_shop_products(shop_id):
             p.current_price,
             p.competitor_price,
             p.expiry_days,
-            p.is_visible,
             a.analysis_json
         FROM products p
         LEFT JOIN analyses a
-            ON a.product_id = p.id
+        ON a.product_id = p.id
         WHERE p.shop_id=%s
         AND p.is_visible=1
         ORDER BY p.product_name
@@ -862,8 +948,9 @@ def get_public_shop_products(shop_id):
     conn.close()
 
     public_items = []
+
     for row in rows:
-        d = dict(row)
+        d = _row_to_dict(row)
 
         try:
             analysis = json.loads(d["analysis_json"]) if d.get("analysis_json") else {}
@@ -872,6 +959,7 @@ def get_public_shop_products(shop_id):
 
         expiry_days = d.get("expiry_days", 0) or 0
         current_price = d.get("current_price", 0) or 0
+        competitor_price = d.get("competitor_price", 0) or 0
 
         public_items.append({
             "id": d["id"],
@@ -879,7 +967,7 @@ def get_public_shop_products(shop_id):
             "brand_name": d["brand_name"] or "",
             "category": d["category"],
             "current_price": current_price,
-            "competitor_price": d["competitor_price"] or 0,
+            "competitor_price": competitor_price,
             "expiry_days": expiry_days,
             "discount_pct": analysis.get("discount_pct", 0),
             "discounted_price": analysis.get("discounted_price", current_price),
@@ -894,10 +982,10 @@ def get_public_shop_products(shop_id):
     return public_items
 
 
-# Backward-compatibility aliases
-def get_visible_products(shop_id):
+# Backward-compatibility aliases used by some blueprints / old code
+def get_public_shop_data(shop_id):
     return get_public_shop_products(shop_id)
 
 
-def get_public_shop_data(shop_id):
+def get_visible_products(shop_id):
     return get_public_shop_products(shop_id)
