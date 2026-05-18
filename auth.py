@@ -78,7 +78,7 @@ def customer_signup():
         return redirect(url_for("customer.home"))
 
     if request.method == "POST":
-        print("[DEBUG] CUSTOMER SIGNUP FORM:", dict(request.form))
+        
         name      = request.form.get("name", "").strip()
         email     = request.form.get("email", "").strip()
         password  = request.form.get("password", "")
@@ -130,6 +130,7 @@ def customer_signup():
         session["user_lon"]      = lon
         session["user_loc_name"] = loc_name
         flash(f"Welcome, {user['name']}! Find shops near you.", "success")
+        print("[DEBUG] CUSTOMER CREATED:", user)
         return redirect(url_for("customer.home"))
 
     return render_template("auth/customer_signup.html")
