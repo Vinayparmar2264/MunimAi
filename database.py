@@ -1,177 +1,285 @@
 """
-database.py — MerchAI v6 SQLite Database Layer
-Handles all DB operations for:
-  - users (shopkeepers & customers, role-based)
-  - shops (multi-shop per user, location-aware)
-  - products (per-shop, with visibility & brand)
-  - analyses (cached per product)
-  - customers (registration with location)
+database.py — MerchAI PostgreSQL/Supabase Database Layer
 
-Multi-tenant isolation: every query is scoped by shop_id + owner_id.
-No data from one shop can leak to another.
+Upgraded from SQLite → PostgreSQL (Supabase compatible)
+WITHOUT breaking existing functionality.
+
+Supports:
+- users
+- multi-shop management
+- products
+- analyses
+- customer location
+- public customer product browsing
+- visibility controls
+- nearby shop discovery
+- multi-tenant isolation
+
+IMPORTANT:
+This version uses psycopg2 + Supabase PostgreSQL.
 """
 
-import sqlite3
 import os
 import json
-from datetime import datetime
+import psycopg2
+import psycopg2.extras
+from math import radians, sin, cos, sqrt, atan2
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "merch_ai.db")
+DATABASE_URL = os.getenv("DATABASE_URL")
 
+
+# ═══════════════════════════════════════════════════════════════
+# DATABASE CONNECTION
+# ═══════════════════════════════════════════════════════════════
 
 def get_db():
-    """Return a new SQLite connection with row_factory set."""
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
+    """
+    PostgreSQL connection for Supabase.
+    """
+
+    if not DATABASE_URL:
+        raise Exception("DATABASE_URL environment variable missing.")
+
+    conn = psycopg2.connect(DATABASE_URL)
+
     return conn
 
 
+# ═══════════════════════════════════════════════════════════════
+# DATABASE INITIALIZATION
+# ═══════════════════════════════════════════════════════════════
+
 def init_db():
-    """Create all tables if they don't exist. Safe to call on every startup."""
+
     conn = get_db()
-    conn.executescript("""
-        -- ─── USERS (shopkeepers + customers, unified auth) ──────────────
-        CREATE TABLE IF NOT EXISTS users (
-            id            INTEGER PRIMARY KEY AUTOINCREMENT,
-            name          TEXT    NOT NULL,
-            email         TEXT    UNIQUE NOT NULL,
-            password_hash TEXT    NOT NULL,
-            role          TEXT    NOT NULL DEFAULT 'shopkeeper',
-            -- customer location fields
-            latitude      REAL    DEFAULT NULL,
-            longitude     REAL    DEFAULT NULL,
-            location_name TEXT    DEFAULT NULL,
-            created_at    TEXT    DEFAULT (datetime('now'))
-        );
 
-        -- ─── SHOPS (multi-shop per user, each with geo location) ─────────
-        CREATE TABLE IF NOT EXISTS shops (
-            id            INTEGER PRIMARY KEY AUTOINCREMENT,
-            owner_id      INTEGER NOT NULL,
-            shop_name     TEXT    NOT NULL,
-            shop_location TEXT    NOT NULL,
-            latitude      REAL    DEFAULT NULL,
-            longitude     REAL    DEFAULT NULL,
-            extra_notes   TEXT    DEFAULT '',
-            is_active     INTEGER DEFAULT 1,
-            created_at    TEXT    DEFAULT (datetime('now')),
-            updated_at    TEXT    DEFAULT (datetime('now')),
-            FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE
-        );
+    cur = conn.cursor()
 
-        -- ─── PRODUCTS (per-shop, with visibility & brand) ──────────────
-        CREATE TABLE IF NOT EXISTS products (
-            id                   INTEGER PRIMARY KEY AUTOINCREMENT,
-            shop_id              INTEGER NOT NULL,
-            user_id              INTEGER NOT NULL,
-            product_name         TEXT    NOT NULL,
-            brand_name           TEXT    DEFAULT '',
-            category             TEXT    NOT NULL,
-            sales_last_week      REAL    NOT NULL,
-            sales_last_month     REAL    NOT NULL,
-            stock                REAL    NOT NULL,
-            expiry_days          INTEGER NOT NULL,
-            current_price        REAL    NOT NULL,
-            cost_price           REAL    NOT NULL,
-            competitor_price     REAL    DEFAULT 0,
-            season_factor        REAL    DEFAULT 1.0,
-            demand_variability   TEXT    DEFAULT 'Medium',
-            lead_time_days       INTEGER DEFAULT 3,
-            holding_cost_pct     REAL    DEFAULT 25,
-            order_cost           REAL    DEFAULT 500,
-            target_service_level INTEGER DEFAULT 95,
-            reorder_window_days  INTEGER DEFAULT 7,
-            is_visible           INTEGER DEFAULT 1,
-            created_at           TEXT    DEFAULT (datetime('now')),
-            updated_at           TEXT    DEFAULT (datetime('now')),
-            FOREIGN KEY (shop_id)  REFERENCES shops(id)  ON DELETE CASCADE,
-            FOREIGN KEY (user_id)  REFERENCES users(id)  ON DELETE CASCADE
-        );
+    # USERS
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
 
-        -- ─── ANALYSES (cached per product) ────────────────────────────
-        CREATE TABLE IF NOT EXISTS analyses (
-            id              INTEGER PRIMARY KEY AUTOINCREMENT,
-            product_id      INTEGER NOT NULL,
-            shop_id         INTEGER NOT NULL,
-            user_id         INTEGER NOT NULL,
-            analysis_json   TEXT    NOT NULL,
-            created_at      TEXT    DEFAULT (datetime('now')),
-            FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
-            FOREIGN KEY (shop_id)    REFERENCES shops(id)    ON DELETE CASCADE,
-            FOREIGN KEY (user_id)    REFERENCES users(id)    ON DELETE CASCADE
-        );
+        name TEXT NOT NULL,
+        email TEXT UNIQUE NOT NULL,
+        password_hash TEXT NOT NULL,
 
-        -- ─── LEGACY products table (kept for existing guest/session flow) ─
-        -- Adds missing columns to old products table if it exists
-        -- This migration is handled via ALTER TABLE below.
+        role TEXT NOT NULL DEFAULT 'shopkeeper',
+
+        latitude DOUBLE PRECISION,
+        longitude DOUBLE PRECISION,
+        location_name TEXT,
+
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
     """)
 
-    # Safe migrations: add new columns to existing tables without breaking data
-    _safe_add_column(conn, "users",    "role",          "TEXT    NOT NULL DEFAULT 'shopkeeper'")
-    _safe_add_column(conn, "users",    "latitude",      "REAL    DEFAULT NULL")
-    _safe_add_column(conn, "users",    "longitude",     "REAL    DEFAULT NULL")
-    _safe_add_column(conn, "users",    "location_name", "TEXT    DEFAULT NULL")
-    _safe_add_column(conn, "products", "shop_id",       "INTEGER DEFAULT NULL")
-    _safe_add_column(conn, "products", "brand_name",    "TEXT    DEFAULT ''")
-    _safe_add_column(conn, "products", "is_visible",    "INTEGER DEFAULT 1")
+    # SHOPS
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS shops (
+        id SERIAL PRIMARY KEY,
+
+        owner_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+
+        shop_name TEXT NOT NULL,
+        shop_location TEXT NOT NULL,
+
+        latitude DOUBLE PRECISION,
+        longitude DOUBLE PRECISION,
+
+        extra_notes TEXT DEFAULT '',
+
+        is_active INTEGER DEFAULT 1,
+
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    """)
+
+    # PRODUCTS
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS products (
+        id SERIAL PRIMARY KEY,
+
+        shop_id INTEGER REFERENCES shops(id) ON DELETE CASCADE,
+        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+
+        product_name TEXT NOT NULL,
+        brand_name TEXT DEFAULT '',
+
+        category TEXT NOT NULL,
+
+        sales_last_week DOUBLE PRECISION NOT NULL,
+        sales_last_month DOUBLE PRECISION NOT NULL,
+
+        stock DOUBLE PRECISION NOT NULL,
+
+        expiry_days INTEGER NOT NULL,
+
+        current_price DOUBLE PRECISION NOT NULL,
+        cost_price DOUBLE PRECISION NOT NULL,
+
+        competitor_price DOUBLE PRECISION DEFAULT 0,
+
+        season_factor DOUBLE PRECISION DEFAULT 1.0,
+
+        demand_variability TEXT DEFAULT 'Medium',
+
+        lead_time_days INTEGER DEFAULT 3,
+
+        holding_cost_pct DOUBLE PRECISION DEFAULT 25,
+
+        order_cost DOUBLE PRECISION DEFAULT 500,
+
+        target_service_level INTEGER DEFAULT 95,
+
+        reorder_window_days INTEGER DEFAULT 7,
+
+        is_visible INTEGER DEFAULT 1,
+
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    """)
+
+    # ANALYSES
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS analyses (
+        id SERIAL PRIMARY KEY,
+
+        product_id INTEGER REFERENCES products(id) ON DELETE CASCADE,
+
+        shop_id INTEGER REFERENCES shops(id) ON DELETE CASCADE,
+
+        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+
+        analysis_json TEXT NOT NULL,
+
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    """)
 
     conn.commit()
+
+    cur.close()
     conn.close()
-    print("[DB] Tables initialised →", DB_PATH)
+
+    print("[DB] PostgreSQL/Supabase initialized successfully")
 
 
-def _safe_add_column(conn, table, column, definition):
-    """Add a column only if it doesn't already exist."""
-    try:
-        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
-    except sqlite3.OperationalError:
-        pass  # Column already exists
+# ═══════════════════════════════════════════════════════════════
+# HELPERS
+# ═══════════════════════════════════════════════════════════════
+
+def dict_cursor(conn):
+    return conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
 
 # ═══════════════════════════════════════════════════════════════
 # USER OPERATIONS
 # ═══════════════════════════════════════════════════════════════
 
-def create_user(name: str, email: str, password_hash: str, role: str = "shopkeeper"):
+def create_user(name, email, password_hash, role="shopkeeper"):
+
     conn = get_db()
+    cur = dict_cursor(conn)
+
     try:
-        conn.execute(
-            "INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)",
-            (name.strip(), email.strip().lower(), password_hash, role)
-        )
+
+        cur.execute("""
+            INSERT INTO users
+            (name, email, password_hash, role)
+            VALUES (%s, %s, %s, %s)
+            RETURNING *
+        """, (
+            name.strip(),
+            email.strip().lower(),
+            password_hash,
+            role
+        ))
+
+        user = cur.fetchone()
+
         conn.commit()
-        user = get_user_by_email(email)
-        return user, None
-    except sqlite3.IntegrityError:
+
+        return dict(user), None
+
+    except Exception:
+
+        conn.rollback()
+
         return None, "An account with this email already exists."
+
     finally:
+
+        cur.close()
         conn.close()
 
 
-def get_user_by_email(email: str):
+def get_user_by_email(email):
+
     conn = get_db()
-    row = conn.execute(
-        "SELECT * FROM users WHERE email = ?", (email.strip().lower(),)
-    ).fetchone()
+    cur = dict_cursor(conn)
+
+    cur.execute("""
+        SELECT * FROM users
+        WHERE email=%s
+    """, (
+        email.strip().lower(),
+    ))
+
+    row = cur.fetchone()
+
+    cur.close()
     conn.close()
+
     return dict(row) if row else None
 
 
-def get_user_by_id(user_id: int):
+def get_user_by_id(user_id):
+
     conn = get_db()
-    row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+    cur = dict_cursor(conn)
+
+    cur.execute("""
+        SELECT * FROM users
+        WHERE id=%s
+    """, (
+        user_id,
+    ))
+
+    row = cur.fetchone()
+
+    cur.close()
     conn.close()
+
     return dict(row) if row else None
 
 
-def update_user_location(user_id: int, latitude: float, longitude: float, location_name: str = ""):
+def update_user_location(user_id,
+                         latitude,
+                         longitude,
+                         location_name=""):
+
     conn = get_db()
-    conn.execute(
-        "UPDATE users SET latitude=?, longitude=?, location_name=? WHERE id=?",
-        (latitude, longitude, location_name, user_id)
-    )
+    cur = conn.cursor()
+
+    cur.execute("""
+        UPDATE users
+        SET latitude=%s,
+            longitude=%s,
+            location_name=%s
+        WHERE id=%s
+    """, (
+        latitude,
+        longitude,
+        location_name,
+        user_id
+    ))
+
     conn.commit()
+
+    cur.close()
     conn.close()
 
 
@@ -179,364 +287,782 @@ def update_user_location(user_id: int, latitude: float, longitude: float, locati
 # SHOP OPERATIONS
 # ═══════════════════════════════════════════════════════════════
 
-def create_shop(owner_id: int, shop_name: str, shop_location: str,
-                latitude: float = None, longitude: float = None,
-                extra_notes: str = ""):
+def create_shop(owner_id,
+                shop_name,
+                shop_location,
+                latitude=None,
+                longitude=None,
+                extra_notes=""):
+
     conn = get_db()
-    cur = conn.execute(
-        """INSERT INTO shops (owner_id, shop_name, shop_location, latitude, longitude, extra_notes)
-           VALUES (?, ?, ?, ?, ?, ?)""",
-        (owner_id, shop_name.strip(), shop_location.strip(),
-         latitude, longitude, extra_notes.strip())
-    )
+    cur = conn.cursor()
+
+    cur.execute("""
+        INSERT INTO shops
+        (
+            owner_id,
+            shop_name,
+            shop_location,
+            latitude,
+            longitude,
+            extra_notes
+        )
+        VALUES (%s, %s, %s, %s, %s, %s)
+        RETURNING id
+    """, (
+        owner_id,
+        shop_name.strip(),
+        shop_location.strip(),
+        latitude,
+        longitude,
+        extra_notes.strip()
+    ))
+
+    shop_id = cur.fetchone()[0]
+
     conn.commit()
-    sid = cur.lastrowid
+
+    cur.close()
     conn.close()
-    return sid
+
+    return shop_id
 
 
-def get_shops_by_owner(owner_id: int):
+def get_shops_by_owner(owner_id):
+
     conn = get_db()
-    rows = conn.execute(
-        "SELECT * FROM shops WHERE owner_id=? AND is_active=1 ORDER BY created_at DESC",
-        (owner_id,)
-    ).fetchall()
+    cur = dict_cursor(conn)
+
+    cur.execute("""
+        SELECT *
+        FROM shops
+        WHERE owner_id=%s
+        AND is_active=1
+        ORDER BY created_at DESC
+    """, (
+        owner_id,
+    ))
+
+    rows = cur.fetchall()
+
+    cur.close()
     conn.close()
+
     return [dict(r) for r in rows]
 
 
-def get_shop(shop_id: int, owner_id: int = None):
-    """Fetch a single shop. If owner_id is provided, ownership is verified."""
+def get_shop(shop_id, owner_id=None):
+
     conn = get_db()
+    cur = dict_cursor(conn)
+
     if owner_id is not None:
-        row = conn.execute(
-            "SELECT * FROM shops WHERE id=? AND owner_id=? AND is_active=1",
-            (shop_id, owner_id)
-        ).fetchone()
+
+        cur.execute("""
+            SELECT *
+            FROM shops
+            WHERE id=%s
+            AND owner_id=%s
+            AND is_active=1
+        """, (
+            shop_id,
+            owner_id
+        ))
+
     else:
-        row = conn.execute(
-            "SELECT * FROM shops WHERE id=? AND is_active=1", (shop_id,)
-        ).fetchone()
+
+        cur.execute("""
+            SELECT *
+            FROM shops
+            WHERE id=%s
+            AND is_active=1
+        """, (
+            shop_id,
+        ))
+
+    row = cur.fetchone()
+
+    cur.close()
     conn.close()
+
     return dict(row) if row else None
 
 
-def update_shop(shop_id: int, owner_id: int, shop_name: str, shop_location: str,
-                latitude: float = None, longitude: float = None, extra_notes: str = ""):
+def update_shop(shop_id,
+                owner_id,
+                shop_name,
+                shop_location,
+                latitude=None,
+                longitude=None,
+                extra_notes=""):
+
     conn = get_db()
-    conn.execute(
-        """UPDATE shops SET shop_name=?, shop_location=?, latitude=?, longitude=?,
-           extra_notes=?, updated_at=datetime('now')
-           WHERE id=? AND owner_id=?""",
-        (shop_name, shop_location, latitude, longitude, extra_notes, shop_id, owner_id)
-    )
+    cur = conn.cursor()
+
+    cur.execute("""
+        UPDATE shops
+        SET
+            shop_name=%s,
+            shop_location=%s,
+            latitude=%s,
+            longitude=%s,
+            extra_notes=%s,
+            updated_at=CURRENT_TIMESTAMP
+        WHERE id=%s
+        AND owner_id=%s
+    """, (
+        shop_name,
+        shop_location,
+        latitude,
+        longitude,
+        extra_notes,
+        shop_id,
+        owner_id
+    ))
+
     conn.commit()
+
+    cur.close()
     conn.close()
 
 
-def delete_shop(shop_id: int, owner_id: int):
-    """Soft-delete a shop."""
+def delete_shop(shop_id, owner_id):
+
     conn = get_db()
-    conn.execute(
-        "UPDATE shops SET is_active=0 WHERE id=? AND owner_id=?",
-        (shop_id, owner_id)
-    )
+    cur = conn.cursor()
+
+    cur.execute("""
+        UPDATE shops
+        SET is_active=0
+        WHERE id=%s
+        AND owner_id=%s
+    """, (
+        shop_id,
+        owner_id
+    ))
+
     conn.commit()
+
+    cur.close()
     conn.close()
 
 
-def get_nearby_shops(lat: float, lon: float, radius_km: float = 1.0,
-                     search_name: str = ""):
-    """
-    Return all active shops within radius_km using the Haversine formula.
-    Optionally filter by shop name.
-    Returns list of dicts with added 'distance_km' field.
-    """
+# ═══════════════════════════════════════════════════════════════
+# HAVERSINE
+# ═══════════════════════════════════════════════════════════════
+
+def _haversine(lat1, lon1, lat2, lon2):
+
+    R = 6371
+
+    dlat = radians(lat2 - lat1)
+    dlon = radians(lon2 - lon1)
+
+    a = (
+        sin(dlat / 2) ** 2
+        + cos(radians(lat1))
+        * cos(radians(lat2))
+        * sin(dlon / 2) ** 2
+    )
+
+    c = 2 * atan2(sqrt(a), sqrt(1 - a))
+
+    return R * c
+
+
+def get_nearby_shops(lat,
+                     lon,
+                     radius_km=1.0,
+                     search_name=""):
+
     conn = get_db()
+    cur = dict_cursor(conn)
+
     if search_name:
-        rows = conn.execute(
-            "SELECT * FROM shops WHERE is_active=1 AND shop_name LIKE ?",
-            (f"%{search_name}%",)
-        ).fetchall()
+
+        cur.execute("""
+            SELECT *
+            FROM shops
+            WHERE is_active=1
+            AND shop_name ILIKE %s
+        """, (
+            f"%{search_name}%",
+        ))
+
     else:
-        rows = conn.execute(
-            "SELECT * FROM shops WHERE is_active=1 AND latitude IS NOT NULL AND longitude IS NOT NULL"
-        ).fetchall()
+
+        cur.execute("""
+            SELECT *
+            FROM shops
+            WHERE is_active=1
+            AND latitude IS NOT NULL
+            AND longitude IS NOT NULL
+        """)
+
+    rows = cur.fetchall()
+
+    cur.close()
     conn.close()
 
-    import math
     result = []
+
     for row in rows:
+
         d = dict(row)
+
         if d.get("latitude") and d.get("longitude"):
-            dist = _haversine(lat, lon, d["latitude"], d["longitude"])
+
+            dist = _haversine(
+                lat,
+                lon,
+                d["latitude"],
+                d["longitude"]
+            )
+
             if search_name or dist <= radius_km:
+
                 d["distance_km"] = round(dist, 2)
+
                 result.append(d)
+
         elif search_name:
+
             d["distance_km"] = None
+
             result.append(d)
 
-    result.sort(key=lambda x: x["distance_km"] if x["distance_km"] is not None else 9999)
+    result.sort(
+        key=lambda x:
+        x["distance_km"]
+        if x["distance_km"] is not None
+        else 9999
+    )
+
     return result
 
 
-def _haversine(lat1, lon1, lat2, lon2):
-    """Calculate great-circle distance in km between two lat/lon points."""
-    import math
-    R = 6371
-    phi1, phi2 = math.radians(lat1), math.radians(lat2)
-    dphi = math.radians(lat2 - lat1)
-    dlam = math.radians(lon2 - lon1)
-    a = math.sin(dphi/2)**2 + math.cos(phi1)*math.cos(phi2)*math.sin(dlam/2)**2
-    return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
-
-
 # ═══════════════════════════════════════════════════════════════
-# PRODUCT OPERATIONS (CRUD — now scoped by shop_id)
+# PRODUCT OPERATIONS
 # ═══════════════════════════════════════════════════════════════
 
 PRODUCT_FIELDS = [
-    "product_name", "brand_name", "category",
-    "sales_last_week", "sales_last_month",
-    "stock", "expiry_days", "current_price", "cost_price",
-    "competitor_price", "season_factor", "demand_variability",
-    "lead_time_days", "holding_cost_pct", "order_cost",
-    "target_service_level", "reorder_window_days", "is_visible",
+    "product_name",
+    "brand_name",
+    "category",
+    "sales_last_week",
+    "sales_last_month",
+    "stock",
+    "expiry_days",
+    "current_price",
+    "cost_price",
+    "competitor_price",
+    "season_factor",
+    "demand_variability",
+    "lead_time_days",
+    "holding_cost_pct",
+    "order_cost",
+    "target_service_level",
+    "reorder_window_days",
+    "is_visible",
 ]
 
 
-def add_product(user_id: int, data: dict, shop_id: int = None):
-    """Insert a new product and return its id."""
+def add_product(user_id, data, shop_id=None):
+
     conn = get_db()
-    # Ensure brand_name and is_visible exist with defaults
+    cur = conn.cursor()
+
     data.setdefault("brand_name", "")
     data.setdefault("is_visible", 1)
+
     vals = [data.get(f) for f in PRODUCT_FIELDS]
-    placeholders = ", ".join(["?"] * len(PRODUCT_FIELDS))
+
+    placeholders = ", ".join(["%s"] * len(PRODUCT_FIELDS))
+
     cols = ", ".join(PRODUCT_FIELDS)
-    cur = conn.execute(
-        f"INSERT INTO products (user_id, shop_id, {cols}) VALUES (?, ?, {placeholders})",
+
+    cur.execute(
+        f"""
+        INSERT INTO products
+        (
+            user_id,
+            shop_id,
+            {cols}
+        )
+        VALUES
+        (
+            %s,
+            %s,
+            {placeholders}
+        )
+        RETURNING id
+        """,
         [user_id, shop_id] + vals
     )
+
+    pid = cur.fetchone()[0]
+
     conn.commit()
-    pid = cur.lastrowid
+
+    cur.close()
     conn.close()
+
     return pid
 
 
-def update_product(product_id: int, user_id: int, data: dict, shop_id: int = None):
-    """Update an existing product (ownership check included)."""
+def update_product(product_id,
+                   user_id,
+                   data,
+                   shop_id=None):
+
     conn = get_db()
+    cur = conn.cursor()
+
     data.setdefault("brand_name", "")
     data.setdefault("is_visible", 1)
-    set_clause = ", ".join([f"{f} = ?" for f in PRODUCT_FIELDS])
-    set_clause += ", updated_at = datetime('now')"
+
+    set_clause = ", ".join(
+        [f"{f}=%s" for f in PRODUCT_FIELDS]
+    )
+
     vals = [data.get(f) for f in PRODUCT_FIELDS]
+
     if shop_id is not None:
+
         vals += [product_id, user_id, shop_id]
-        conn.execute(
-            f"UPDATE products SET {set_clause} WHERE id = ? AND user_id = ? AND shop_id = ?",
+
+        cur.execute(
+            f"""
+            UPDATE products
+            SET {set_clause},
+                updated_at=CURRENT_TIMESTAMP
+            WHERE id=%s
+            AND user_id=%s
+            AND shop_id=%s
+            """,
             vals
         )
+
     else:
+
         vals += [product_id, user_id]
-        conn.execute(
-            f"UPDATE products SET {set_clause} WHERE id = ? AND user_id = ?",
+
+        cur.execute(
+            f"""
+            UPDATE products
+            SET {set_clause},
+                updated_at=CURRENT_TIMESTAMP
+            WHERE id=%s
+            AND user_id=%s
+            """,
             vals
         )
+
     conn.commit()
+
+    cur.close()
     conn.close()
 
 
-def toggle_product_visibility(product_id: int, user_id: int, shop_id: int):
-    """Toggle is_visible for a product."""
+def delete_product(product_id, user_id):
+
     conn = get_db()
-    conn.execute(
-        "UPDATE products SET is_visible = CASE WHEN is_visible=1 THEN 0 ELSE 1 END "
-        "WHERE id=? AND user_id=? AND shop_id=?",
-        (product_id, user_id, shop_id)
-    )
+    cur = conn.cursor()
+
+    cur.execute("""
+        DELETE FROM products
+        WHERE id=%s
+        AND user_id=%s
+    """, (
+        product_id,
+        user_id
+    ))
+
     conn.commit()
+
+    cur.close()
     conn.close()
 
 
-def delete_product(product_id: int, user_id: int):
-    """Delete a product (and its analyses) owned by user_id."""
+def get_product(product_id, user_id):
+
     conn = get_db()
-    conn.execute(
-        "DELETE FROM products WHERE id = ? AND user_id = ?",
-        (product_id, user_id)
-    )
-    conn.commit()
+    cur = dict_cursor(conn)
+
+    cur.execute("""
+        SELECT *
+        FROM products
+        WHERE id=%s
+        AND user_id=%s
+    """, (
+        product_id,
+        user_id
+    ))
+
+    row = cur.fetchone()
+
+    cur.close()
     conn.close()
 
-
-def get_product(product_id: int, user_id: int):
-    """Fetch a single product with ownership check."""
-    conn = get_db()
-    row = conn.execute(
-        "SELECT * FROM products WHERE id = ? AND user_id = ?",
-        (product_id, user_id)
-    ).fetchone()
-    conn.close()
     return dict(row) if row else None
 
 
-def get_products_by_shop(shop_id: int, user_id: int, visible_only: bool = False):
-    """
-    Fetch products for a specific shop.
-    If visible_only=True, only return is_visible=1 products (customer-facing).
-    """
+def get_products_by_shop(shop_id,
+                         user_id,
+                         visible_only=False):
+
     conn = get_db()
+    cur = dict_cursor(conn)
+
     if visible_only:
-        rows = conn.execute(
-            "SELECT * FROM products WHERE shop_id=? AND is_visible=1 ORDER BY updated_at DESC",
-            (shop_id,)
-        ).fetchall()
+
+        cur.execute("""
+            SELECT *
+            FROM products
+            WHERE shop_id=%s
+            AND is_visible=1
+            ORDER BY updated_at DESC
+        """, (
+            shop_id,
+        ))
+
     else:
-        rows = conn.execute(
-            "SELECT * FROM products WHERE shop_id=? AND user_id=? ORDER BY updated_at DESC",
-            (shop_id, user_id)
-        ).fetchall()
+
+        cur.execute("""
+            SELECT *
+            FROM products
+            WHERE shop_id=%s
+            AND user_id=%s
+            ORDER BY updated_at DESC
+        """, (
+            shop_id,
+            user_id
+        ))
+
+    rows = cur.fetchall()
+
+    cur.close()
     conn.close()
+
     return [dict(r) for r in rows]
 
 
-def get_all_products(user_id: int, shop_id: int = None):
-    """Fetch all products for a user, optionally filtered by shop."""
+def get_all_products(user_id,
+                     shop_id=None):
+
     conn = get_db()
+    cur = dict_cursor(conn)
+
     if shop_id is not None:
-        rows = conn.execute(
-            "SELECT * FROM products WHERE user_id=? AND shop_id=? ORDER BY updated_at DESC",
-            (user_id, shop_id)
-        ).fetchall()
+
+        cur.execute("""
+            SELECT *
+            FROM products
+            WHERE user_id=%s
+            AND shop_id=%s
+            ORDER BY updated_at DESC
+        """, (
+            user_id,
+            shop_id
+        ))
+
     else:
-        rows = conn.execute(
-            "SELECT * FROM products WHERE user_id=? ORDER BY updated_at DESC",
-            (user_id,)
-        ).fetchall()
+
+        cur.execute("""
+            SELECT *
+            FROM products
+            WHERE user_id=%s
+            ORDER BY updated_at DESC
+        """, (
+            user_id,
+        ))
+
+    rows = cur.fetchall()
+
+    cur.close()
     conn.close()
+
     return [dict(r) for r in rows]
 
 
-def count_products(user_id: int, shop_id: int = None) -> int:
+def count_products(user_id,
+                   shop_id=None):
+
     conn = get_db()
+    cur = conn.cursor()
+
     if shop_id:
-        n = conn.execute(
-            "SELECT COUNT(*) FROM products WHERE user_id=? AND shop_id=?",
-            (user_id, shop_id)
-        ).fetchone()[0]
+
+        cur.execute("""
+            SELECT COUNT(*)
+            FROM products
+            WHERE user_id=%s
+            AND shop_id=%s
+        """, (
+            user_id,
+            shop_id
+        ))
+
     else:
-        n = conn.execute(
-            "SELECT COUNT(*) FROM products WHERE user_id=?", (user_id,)
-        ).fetchone()[0]
+
+        cur.execute("""
+            SELECT COUNT(*)
+            FROM products
+            WHERE user_id=%s
+        """, (
+            user_id,
+        ))
+
+    n = cur.fetchone()[0]
+
+    cur.close()
     conn.close()
+
     return n
 
 
-# ═══════════════════════════════════════════════════════════════
-# ANALYSIS CACHE OPERATIONS
-# ═══════════════════════════════════════════════════════════════
+def toggle_product_visibility(product_id,
+                              user_id,
+                              shop_id):
 
-def save_analysis(product_id: int, user_id: int, analysis: dict, shop_id: int = None):
-    """Upsert analysis for a product (one analysis per product)."""
     conn = get_db()
-    conn.execute(
-        "DELETE FROM analyses WHERE product_id = ? AND user_id = ?",
-        (product_id, user_id)
-    )
-    conn.execute(
-        "INSERT INTO analyses (product_id, shop_id, user_id, analysis_json) VALUES (?, ?, ?, ?)",
-        (product_id, shop_id, user_id, json.dumps(analysis))
-    )
+    cur = conn.cursor()
+
+    cur.execute("""
+        UPDATE products
+        SET is_visible =
+            CASE
+                WHEN is_visible=1 THEN 0
+                ELSE 1
+            END
+        WHERE id=%s
+        AND user_id=%s
+        AND shop_id=%s
+    """, (
+        product_id,
+        user_id,
+        shop_id
+    ))
+
     conn.commit()
+
+    cur.close()
     conn.close()
 
 
-def get_analysis(product_id: int, user_id: int):
-    """Retrieve cached analysis for a product."""
+# ═══════════════════════════════════════════════════════════════
+# ANALYSIS OPERATIONS
+# ═══════════════════════════════════════════════════════════════
+
+def save_analysis(product_id,
+                  user_id,
+                  analysis,
+                  shop_id=None):
+
     conn = get_db()
-    row = conn.execute(
-        "SELECT * FROM analyses WHERE product_id = ? AND user_id = ? ORDER BY created_at DESC LIMIT 1",
-        (product_id, user_id)
-    ).fetchone()
+    cur = conn.cursor()
+
+    cur.execute("""
+        DELETE FROM analyses
+        WHERE product_id=%s
+        AND user_id=%s
+    """, (
+        product_id,
+        user_id
+    ))
+
+    cur.execute("""
+        INSERT INTO analyses
+        (
+            product_id,
+            shop_id,
+            user_id,
+            analysis_json
+        )
+        VALUES (%s, %s, %s, %s)
+    """, (
+        product_id,
+        shop_id,
+        user_id,
+        json.dumps(analysis)
+    ))
+
+    conn.commit()
+
+    cur.close()
     conn.close()
+
+
+def get_analysis(product_id,
+                 user_id):
+
+    conn = get_db()
+    cur = dict_cursor(conn)
+
+    cur.execute("""
+        SELECT *
+        FROM analyses
+        WHERE product_id=%s
+        AND user_id=%s
+        ORDER BY created_at DESC
+        LIMIT 1
+    """, (
+        product_id,
+        user_id
+    ))
+
+    row = cur.fetchone()
+
+    cur.close()
+    conn.close()
+
     if row:
         d = dict(row)
         return json.loads(d["analysis_json"])
+
     return None
 
 
-def get_all_analyses(user_id: int, shop_id: int = None):
-    """Fetch latest analysis for every product of this user, optionally filtered by shop."""
+def get_all_analyses(user_id,
+                     shop_id=None):
+
     conn = get_db()
+    cur = dict_cursor(conn)
+
     if shop_id is not None:
-        rows = conn.execute("""
-            SELECT a.product_id, a.analysis_json, a.created_at,
-                   p.product_name, p.category
+
+        cur.execute("""
+            SELECT
+                a.product_id,
+                a.analysis_json,
+                a.created_at,
+                p.product_name,
+                p.category
             FROM analyses a
-            JOIN products p ON p.id = a.product_id
-            WHERE a.user_id = ? AND a.shop_id = ?
+            JOIN products p
+            ON p.id = a.product_id
+            WHERE a.user_id=%s
+            AND a.shop_id=%s
             ORDER BY a.created_at DESC
-        """, (user_id, shop_id)).fetchall()
+        """, (
+            user_id,
+            shop_id
+        ))
+
     else:
-        rows = conn.execute("""
-            SELECT a.product_id, a.analysis_json, a.created_at,
-                   p.product_name, p.category
+
+        cur.execute("""
+            SELECT
+                a.product_id,
+                a.analysis_json,
+                a.created_at,
+                p.product_name,
+                p.category
             FROM analyses a
-            JOIN products p ON p.id = a.product_id
-            WHERE a.user_id = ?
+            JOIN products p
+            ON p.id = a.product_id
+            WHERE a.user_id=%s
             ORDER BY a.created_at DESC
-        """, (user_id,)).fetchall()
+        """, (
+            user_id,
+        ))
+
+    rows = cur.fetchall()
+
+    cur.close()
     conn.close()
+
     results = {}
+
     for row in rows:
+
         pid = row["product_id"]
+
         if pid not in results:
+
             results[pid] = {
-                "product_id":   pid,
+                "product_id": pid,
                 "product_name": row["product_name"],
-                "category":     row["category"],
-                "analysed_at":  row["created_at"],
-                "analysis":     json.loads(row["analysis_json"]),
+                "category": row["category"],
+                "analysed_at": row["created_at"],
+                "analysis": json.loads(row["analysis_json"]),
             }
+
     return list(results.values())
 
 
-def get_public_shop_products(shop_id: int):
-    """
-    Get ONLY visible products for a shop — for customer-facing view.
-    Returns safe public fields only (no stock, cost, internal metrics).
-    """
+# ═══════════════════════════════════════════════════════════════
+# PUBLIC CUSTOMER PRODUCTS
+# ═══════════════════════════════════════════════════════════════
+
+def get_public_shop_products(shop_id):
+
     conn = get_db()
-    rows = conn.execute("""
-        SELECT p.id, p.product_name, p.brand_name, p.category,
-               p.current_price, p.competitor_price, p.expiry_days,
-               a.analysis_json
+    cur = dict_cursor(conn)
+
+    cur.execute("""
+        SELECT
+            p.id,
+            p.product_name,
+            p.brand_name,
+            p.category,
+            p.current_price,
+            p.competitor_price,
+            p.expiry_days,
+            a.analysis_json
         FROM products p
-        LEFT JOIN analyses a ON a.product_id = p.id
-        WHERE p.shop_id = ? AND p.is_visible = 1
+        LEFT JOIN analyses a
+        ON a.product_id = p.id
+        WHERE p.shop_id=%s
+        AND p.is_visible=1
         ORDER BY p.product_name
-    """, (shop_id,)).fetchall()
+    """, (
+        shop_id,
+    ))
+
+    rows = cur.fetchall()
+
+    cur.close()
     conn.close()
 
     public_items = []
+
     for row in rows:
+
         d = dict(row)
-        analysis = json.loads(d["analysis_json"]) if d.get("analysis_json") else {}
+
+        analysis = (
+            json.loads(d["analysis_json"])
+            if d.get("analysis_json")
+            else {}
+        )
+
         public_items.append({
-            "id":               d["id"],
-            "product_name":     d["product_name"],
-            "brand_name":       d["brand_name"] or "",
-            "category":         d["category"],
-            "current_price":    d["current_price"],
+            "id": d["id"],
+            "product_name": d["product_name"],
+            "brand_name": d["brand_name"] or "",
+            "category": d["category"],
+            "current_price": d["current_price"],
             "competitor_price": d["competitor_price"],
-            "expiry_days":      d["expiry_days"],
-            "discount_pct":     analysis.get("discount_pct", 0),
-            "discounted_price": analysis.get("discounted_price", d["current_price"]),
-            "is_expired":       d["expiry_days"] <= 0,
-            "expiry_status":    "Expired" if d["expiry_days"] <= 0 else (
-                                "Expiring soon" if d["expiry_days"] <= 7 else "Fresh"),
+            "expiry_days": d["expiry_days"],
+
+            "discount_pct": analysis.get("discount_pct", 0),
+
+            "discounted_price": analysis.get(
+                "discounted_price",
+                d["current_price"]
+            ),
+
+            "is_expired": d["expiry_days"] <= 0,
+
+            "expiry_status":
+                "Expired"
+                if d["expiry_days"] <= 0
+                else (
+                    "Expiring soon"
+                    if d["expiry_days"] <= 7
+                    else "Fresh"
+                )
         })
+
     return public_items
