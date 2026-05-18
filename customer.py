@@ -422,8 +422,7 @@ def update_location():
 # ============================================================
 
 @customer_bp.route(
-    "/shops/<int:shop_id>",
-    endpoint="shop_detail"
+    "/shops/<int:shop_id>"
 )
 
 @login_required
