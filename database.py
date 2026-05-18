@@ -1,11 +1,12 @@
 """
 database.py — MunimAI PostgreSQL/Supabase Database Layer
 
-Stable Production-Compatible Version
-- PostgreSQL / Supabase support
+FINAL STABLE VERSION
+- PostgreSQL / Supabase compatible
 - Multi-shop support
 - Customer support
 - Product analysis support
+- Public product browsing
 - Safe distance calculations
 - Render compatible
 """
@@ -430,6 +431,67 @@ def get_shop(shop_id, owner_id=None):
     return dict(row) if row else None
 
 
+def update_shop(
+        shop_id,
+        owner_id,
+        shop_name,
+        shop_location,
+        latitude=None,
+        longitude=None,
+        extra_notes=""
+):
+
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute("""
+        UPDATE shops
+        SET
+            shop_name=%s,
+            shop_location=%s,
+            latitude=%s,
+            longitude=%s,
+            extra_notes=%s,
+            updated_at=CURRENT_TIMESTAMP
+        WHERE id=%s
+        AND owner_id=%s
+    """, (
+        shop_name,
+        shop_location,
+        latitude,
+        longitude,
+        extra_notes,
+        shop_id,
+        owner_id
+    ))
+
+    conn.commit()
+
+    cur.close()
+    conn.close()
+
+
+def delete_shop(shop_id, owner_id):
+
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute("""
+        UPDATE shops
+        SET is_active=0
+        WHERE id=%s
+        AND owner_id=%s
+    """, (
+        shop_id,
+        owner_id
+    ))
+
+    conn.commit()
+
+    cur.close()
+    conn.close()
+
+
 # ============================================================
 # DISTANCE
 # ============================================================
@@ -544,3 +606,91 @@ def get_nearby_shops(
     )
 
     return result
+
+
+# ============================================================
+# PUBLIC PRODUCTS
+# ============================================================
+
+def get_public_shop_products(shop_id):
+
+    conn = get_db()
+    cur = dict_cursor(conn)
+
+    cur.execute("""
+        SELECT
+            p.id,
+            p.product_name,
+            p.brand_name,
+            p.category,
+            p.current_price,
+            p.competitor_price,
+            p.expiry_days,
+            a.analysis_json
+        FROM products p
+        LEFT JOIN analyses a
+        ON a.product_id = p.id
+        WHERE p.shop_id=%s
+        AND p.is_visible=1
+        ORDER BY p.product_name
+    """, (
+        shop_id,
+    ))
+
+    rows = cur.fetchall()
+
+    cur.close()
+    conn.close()
+
+    public_items = []
+
+    for row in rows:
+
+        d = dict(row)
+
+        analysis = (
+            json.loads(d["analysis_json"])
+            if d.get("analysis_json")
+            else {}
+        )
+
+        public_items.append({
+
+            "id": d["id"],
+
+            "product_name": d["product_name"],
+
+            "brand_name": d["brand_name"] or "",
+
+            "category": d["category"],
+
+            "current_price": d["current_price"],
+
+            "competitor_price": d["competitor_price"],
+
+            "expiry_days": d["expiry_days"],
+
+            "discount_pct": analysis.get(
+                "discount_pct",
+                0
+            ),
+
+            "discounted_price": analysis.get(
+                "discounted_price",
+                d["current_price"]
+            ),
+
+            "is_expired":
+                d["expiry_days"] <= 0,
+
+            "expiry_status":
+                "Expired"
+                if d["expiry_days"] <= 0
+                else (
+                    "Expiring soon"
+                    if d["expiry_days"] <= 7
+                    else "Fresh"
+                )
+        })
+
+    return public_items
