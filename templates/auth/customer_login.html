@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% block title %}Customer Login | MunimAI{% endblock %}
+
+{% block content %}
+<div class="auth-page">
+  <div class="container">
+    <div class="auth-card" style="max-width:440px; margin: 40px auto; padding: 30px; border-radius: var(--r-lg, 12px); box-shadow: 0 4px 20px rgba(0,0,0,0.05); background: #ffffff;">
+      
+      <div class="auth-logo" style="text-align: center; margin-bottom: 24px;">
+        <div class="brand-logo" style="width: 48px; height: 48px; background: var(--teal-light, #e6fffa); color: var(--teal, #0d9488); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 12px; font-size: 1.5rem;">
+          <i class="bi bi-basket3-fill"></i>
+        </div>
+        <span class="brand-name" style="font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800; font-size: 1.6rem; color: var(--text-body, #1f2937); display: block;">
+          MunimAI Shopper
+        </span>
+      </div>
+
+      <h1 class="auth-title" style="font-size: 1.4rem; font-weight: 700; text-align: center; margin-bottom: 8px; color: var(--text-body, #1f2937);">
+        Welcome Back! 👋
+      </h1>
+      <p class="auth-sub" style="text-align: center; color: var(--text-muted, #6b7280); font-size: 0.9rem; margin-bottom: 24px;">
+        Log in to find nearby smart retail outlets, track live stock parameters, and view active promotions.
+      </p>
+
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        <div class="auth-err" style="background: #fef2f2; color: #dc2626; padding: 12px 16px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #fecaca; font-size: 0.88rem;">
+          <i class="bi bi-exclamation-triangle-fill me-2"></i>
+          {% for category, message in messages %}
+            <div style="margin-bottom: 4px; font-weight: 600;">{{ message }}</div>
+          {% endfor %}
+        </div>
+        {% endif %}
+      {% endwith %}
+
+      <form method="POST" action="{{ url_for('auth.customer_login') }}">
+        
+        <div class="auth-field" style="margin-bottom: 16px;">
+          <label class="form-label" style="font-weight: 600; font-size: 0.88rem; margin-bottom: 6px; display: block; color: var(--text-body, #374151);">
+            Email address
+          </label>
+          <div class="auth-input-wrap" style="position: relative;">
+            <i class="bi bi-envelope-fill auth-field-icon" style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: #9ca3af;"></i>
+            <input 
+              type="email" 
+              name="email" 
+              class="auth-input" 
+              placeholder="you@example.com" 
+              style="width: 100%; padding: 10px 12px 10px 38px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 0.95rem; outline: none;"
+              required 
+              autocomplete="email"
+            />
+          </div>
+        </div>
+
+        <div class="auth-field" style="margin-bottom: 20px;">
+          <label class="form-label" style="font-weight: 600; font-size: 0.88rem; margin-bottom: 6px; display: block; color: var(--text-body, #374151);">
+            Password
+          </label>
+          <div class="auth-input-wrap" style="position: relative;">
+            <i class="bi bi-lock-fill auth-field-icon" style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: #9ca3af;"></i>
+            <input 
+              type="password" 
+              name="password" 
+              id="pwCustomer" 
+              class="auth-input" 
+              placeholder="Enter your password" 
+              style="width: 100%; padding: 10px 40px 10px 38px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 0.95rem; outline: none;"
+              required 
+              autocomplete="current-password"
+            />
+            <button
+              type="button"
+              class="auth-eye"
+              style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); background: none; border: none; color: #9ca3af; cursor: pointer;"
+              onclick="toggleCustomerPassword('pwCustomer', this)"
+            >
+              <i class="bi bi-eye-fill"></i>
+            </button>
+          </div>
+        </div>
+
+        <button type="submit" class="btn-teal w-100" style="width: 100%; padding: 12px; background: #0d9488; color: #ffffff; border: none; border-radius: 6px; font-weight: 700; font-size: 1rem; transition: background 0.2s;" onmouseover="this.style.background='#0f766e'" onmouseout="this.style.background='#0d9488'">
+          <i class="bi bi-box-arrow-in-right me-2"></i> Log In as Customer
+        </button>
+      </form>
+
+      <div class="auth-divider" style="display: flex; align-items: center; text-align: center; margin: 24px 0; color: #9ca3af; font-size: 0.85rem;">
+        <span style="flex: 1; border-bottom: 1px solid #e5e7eb;"></span>
+        <span style="padding: 0 10px; font-weight: 500;">or access merchant portal</span>
+        <span style="flex: 1; border-bottom: 1px solid #e5e7eb;"></span>
+      </div>
+
+      <a 
+        href="{{ url_for('auth.login') }}" 
+        class="btn-outline w-100" 
+        style="width: 100%; padding: 10px; background: transparent; color: #4b5563; border: 1px solid #d1d5db; border-radius: 6px; font-weight: 600; font-size: 0.9rem; display: flex; align-items: center; justify-content: center; text-decoration: none; transition: background 0.2s;"
+        onmouseover="this.style.background='#f9fafb'"
+        onmouseout="this.style.background='transparent'"
+      >
+        <i class="bi bi-shop me-2" style="color: #ea580c;"></i> Log In as a Shopkeeper instead
+      </a>
+
+      <div class="auth-switch" style="text-align: center; font-size: 0.88rem; color: #4b5563; margin-top: 24px;">
+        New to MunimAI? 
+        <a href="{{ url_for('auth.customer_signup') }}" style="color: #0d9488; font-weight: 600; text-decoration: none; margin-left: 4px;">
+          Create Customer Account →
+        </a>
+      </div>
+
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function toggleCustomerPassword(inputId, buttonEl) {
+  const passwordField = document.getElementById(inputId);
+  if (!passwordField) return;
+
+  if (passwordField.type === 'password') {
+    passwordField.type = 'text';
+    buttonEl.innerHTML = '<i class="bi bi-eye-slash-fill"></i>';
+  } else {
+    passwordField.type = 'password';
+    buttonEl.innerHTML = '<i class="bi bi-eye-fill"></i>';
+  }
+}
+</script>
+{% endblock %}
