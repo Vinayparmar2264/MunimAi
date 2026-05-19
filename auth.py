@@ -2,13 +2,9 @@
 auth.py — MunimAI Authentication Blueprint
 
 FINAL STABLE VERSION
-- Customer signup/login
-- Shopkeeper signup/login
-- Session handling
-- PostgreSQL/Supabase compatible
-- Render compatible
-- Preserves existing functionality
-- UPDATED: Fixes redirect BuildErrors and handles Multi-Role login
+- Fully separated Customer and Shopkeeper portals
+- Hardcoded role validation for strict security
+- Fixes redirect BuildErrors
 """
 
 from flask import (
@@ -28,8 +24,7 @@ from werkzeug.security import (
 
 from database import (
     create_user,
-    get_user_by_email,
-    get_user_by_email_and_role,  # Added the new helper
+    get_user_by_email_and_role,  # Using the strict role-based fetcher
     update_user_location
 )
 
@@ -41,7 +36,7 @@ auth_bp = Blueprint(
 
 
 # ============================================================
-# LOGIN
+# SHOPKEEPER LOGIN
 # ============================================================
 
 @auth_bp.route(
@@ -52,37 +47,29 @@ def login():
 
     if request.method == "POST":
 
-        print("\n========== LOGIN DEBUG ==========")
+        print("\n========== SHOPKEEPER LOGIN DEBUG ==========")
         print("FORM:", dict(request.form))
 
         email = request.form.get("email", "").strip().lower()
         password = request.form.get("password", "")
-        
-        # Capture role if your frontend form provides it (e.g., from a dropdown or radio button)
-        role = request.form.get("role", "").strip().lower()
 
         errors = []
 
         if not email:
             errors.append("Email is required.")
-
         if not password:
             errors.append("Password is required.")
 
         user = None
 
         if not errors:
-            # If the frontend sent a role, use the strict check
-            if role in ["shopkeeper", "customer"]:
-                user = get_user_by_email_and_role(email, role)
-            else:
-                # Fallback for older forms that don't pass a role yet
-                user = get_user_by_email(email)
+            # STRICT ROLE CHECK: Only look for shopkeepers
+            user = get_user_by_email_and_role(email, "shopkeeper")
 
             print("USER FOUND:", user)
 
             if not user:
-                errors.append("Invalid credentials or account does not exist for this role.")
+                errors.append("No shopkeeper account found with this email.")
             else:
                 if not check_password_hash(user["password_hash"], password):
                     errors.append("Invalid email or password.")
@@ -92,24 +79,18 @@ def login():
             session["user_id"] = int(user["id"])
             session["user_name"] = str(user["name"])
             session["user_email"] = str(user["email"])
-            session["role"] = str(user["role"])
-            session["user_role"] = str(user["role"])
+            session["role"] = "shopkeeper"
+            session["user_role"] = "shopkeeper"
             session.permanent = True
 
-            # Customer location
-            if user.get("latitude") is not None:
-                session["user_lat"] = user.get("latitude")
-                session["user_lon"] = user.get("longitude")
-                session["user_loc_name"] = user.get("location_name") or ""
+            print("SHOPKEEPER LOGIN SUCCESS")
 
-            print("LOGIN SUCCESS")
-
-            # Redirect logic
+            flash("Welcome back to your Shop Dashboard!", "success")
+            
             next_url = request.args.get("next")
             if next_url:
                 return redirect(next_url)
 
-            # Centralized redirect using your app.py dashboard shim
             return redirect(url_for("dashboard.index"))
 
         print("LOGIN ERRORS:", errors)
@@ -119,6 +100,80 @@ def login():
 
     return render_template(
         "auth/login.html"
+    )
+
+
+# ============================================================
+# CUSTOMER LOGIN
+# ============================================================
+
+@auth_bp.route(
+    "/customer-login",
+    methods=["GET", "POST"]
+)
+def customer_login():
+
+    if request.method == "POST":
+
+        print("\n========== CUSTOMER LOGIN DEBUG ==========")
+        print("FORM:", dict(request.form))
+
+        email = request.form.get("email", "").strip().lower()
+        password = request.form.get("password", "")
+
+        errors = []
+
+        if not email:
+            errors.append("Email is required.")
+        if not password:
+            errors.append("Password is required.")
+
+        user = None
+
+        if not errors:
+            # STRICT ROLE CHECK: Only look for customers
+            user = get_user_by_email_and_role(email, "customer")
+
+            print("USER FOUND:", user)
+
+            if not user:
+                errors.append("No customer account found with this email.")
+            else:
+                if not check_password_hash(user["password_hash"], password):
+                    errors.append("Invalid email or password.")
+
+        if not errors and user:
+            session.clear()
+            session["user_id"] = int(user["id"])
+            session["user_name"] = str(user["name"])
+            session["user_email"] = str(user["email"])
+            session["role"] = "customer"
+            session["user_role"] = "customer"
+            session.permanent = True
+
+            # Customer location
+            if user.get("latitude") is not None:
+                session["user_lat"] = user.get("latitude")
+                session["user_lon"] = user.get("longitude")
+                session["user_loc_name"] = user.get("location_name") or ""
+
+            print("CUSTOMER LOGIN SUCCESS")
+            
+            flash("Welcome back! Ready to shop?", "success")
+
+            next_url = request.args.get("next")
+            if next_url:
+                return redirect(next_url)
+
+            return redirect(url_for("dashboard.index"))
+
+        print("LOGIN ERRORS:", errors)
+
+        for e in errors:
+            flash(e, "danger")
+
+    return render_template(
+        "auth/customer_login.html"
     )
 
 
@@ -185,7 +240,6 @@ def signup():
 
             flash("Shopkeeper account created successfully!", "success")
             
-            # Fixed Route Name
             return redirect(url_for("dashboard.index"))
 
         print("SHOPKEEPER ERRORS:", errors)
@@ -304,7 +358,6 @@ def customer_signup():
             flash("Customer account created successfully!", "success")
             print("Redirecting to customer dashboard...")
             
-            # Fixed Route Name
             return redirect(url_for("dashboard.index"))
 
         print("SIGNUP ERRORS:", errors)
@@ -323,6 +376,11 @@ def customer_signup():
 
 @auth_bp.route("/logout")
 def logout():
+    role = session.get("user_role")
     session.clear()
     flash("Logged out successfully.", "info")
+    
+    # Smart logout redirect
+    if role == "customer":
+        return redirect(url_for("auth.customer_login"))
     return redirect(url_for("auth.login"))
