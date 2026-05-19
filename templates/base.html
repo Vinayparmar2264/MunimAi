@@ -138,9 +138,30 @@
             </a></li>
           </ul>
         </div>
-        {% else %}
-        <a class="btn-nav-login"  href="{{ url_for('auth.login') }}">Log In</a>
-        <a class="btn-nav-signup" href="{{ url_for('auth.signup') }}">Sign Up Free</a>
+
+
+
+        
+{% else %}
+        <div class="dropdown d-inline-block">
+          <a class="btn-nav-login dropdown-toggle text-decoration-none" href="#" data-bs-toggle="dropdown" style="cursor: pointer;">
+            Log In
+          </a>
+          <ul class="dropdown-menu dropdown-menu-end shadow-sm">
+            <li><a class="dropdown-item" href="{{ url_for('auth.login') }}"><i class="bi bi-shop me-2" style="color: var(--orange);"></i>Shopkeeper Log In</a></li>
+            <li><a class="dropdown-item" href="{{ url_for('auth.customer_login') }}"><i class="bi bi-basket3 me-2" style="color: var(--teal);"></i>Customer Log In</a></li>
+          </ul>
+        </div>
+
+        <div class="dropdown d-inline-block">
+          <a class="btn-nav-signup dropdown-toggle text-decoration-none" href="#" data-bs-toggle="dropdown" style="cursor: pointer;">
+            Sign Up Free
+          </a>
+          <ul class="dropdown-menu dropdown-menu-end shadow-sm">
+            <li><a class="dropdown-item" href="{{ url_for('auth.signup') }}"><i class="bi bi-shop me-2" style="color: var(--orange);"></i>As a Shopkeeper</a></li>
+            <li><a class="dropdown-item" href="{{ url_for('auth.customer_signup') }}"><i class="bi bi-person-plus me-2" style="color: var(--teal);"></i>As a Customer</a></li>
+          </ul>
+        </div>
         {% endif %}
       </div>
     </div>
