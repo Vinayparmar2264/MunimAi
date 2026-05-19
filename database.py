@@ -130,7 +130,7 @@ def init_db():
     conn = get_db()
     cur = conn.cursor()
 
-    # USERS - Updated with composite unique constraint (email, role)
+    # USERS - Configured with composite unique constraint (email, role)
     cur.execute("""
     CREATE TABLE IF NOT EXISTS users (
         id SERIAL PRIMARY KEY,
@@ -304,9 +304,8 @@ def create_user(name, email, password_hash, role="shopkeeper"):
 
 def get_user_by_email(email):
     """
-    LEGACY HELPER: Kept to prevent breaking older code paths.
-    If multiple roles exist for one email, this might return the first one found.
-    For new authentication, use get_user_by_email_and_role instead.
+    LEGACY HELPER: Kept to prevent breaking older legacy code paths.
+    If multiple roles exist for one email, this returns the first matching ID.
     """
     conn = get_db()
     cur = dict_cursor(conn)
@@ -330,6 +329,7 @@ def get_user_by_email(email):
 def get_user_by_email_and_role(email, role):
     """
     NEW HELPER: Safely isolates authentication between Shopkeepers and Customers.
+    Ensures role separation when the same email is shared.
     """
     conn = get_db()
     cur = dict_cursor(conn)
