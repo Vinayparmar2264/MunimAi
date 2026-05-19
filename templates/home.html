@@ -95,7 +95,7 @@
 <section class="stats-strip">
   <div class="container-xl">
     <div class="row g-0">
-      {% for num, label in [('20%','More Revenue'),('50%','Less Wasted Stock'),('60%','Less Manual Work'),('5 Types','Products Supported'),('80K+','Data Records Trained On')] %}
+      {% for num, label in [('20%','More Revenue'),('50%','Less Wasted Stock'),('60%','Less Manual Work'),('5 Types','Products Supported')] %}
       <div class="col-6 col-md">
         <div class="stat-item">
           <div class="stat-num">{{ num }}</div>
@@ -229,7 +229,7 @@
   <div class="container-xl">
     <div class="text-center mb-4">
       <div class="section-tag"><i class="bi bi-cpu me-1"></i> Real Machine Learning</div>
-      <h2 class="section-title" style="font-size:1.6rem">Trained on {{ '{:,}'.format(model_meta.get('records', 80000)) }} retail records</h2>
+      <h2 class="section-title" style="font-size:1.6rem">Trained on a large-scale retail dataset</h2>
     </div>
     <div class="row g-3 justify-content-center">
       {% set dm = model_meta.get('demand_model', {}) %}
