@@ -1,22 +1,7 @@
 """
 shop.py — MerchAI v6 Legacy Multi-Product Shop Blueprint
-PRESERVED from v5 — all existing routes intact.
-Added: brand_name field, is_visible field support.
-
-Routes:
-  GET  /shop/dashboard         — list all user's products
-  GET  /shop/add               — add-product form
-  POST /shop/add               — save new product
-  GET  /shop/edit/<id>         — edit-product form
-  POST /shop/edit/<id>         — save edits
-  POST /shop/delete/<id>       — delete product
-  GET  /shop/analyse/<id>      — run AI and redirect to forecast
-  GET  /shop/analysis-table    — full analysis table for all products
-  GET  /shop/predict/<id>      — per-product forecast page
-  GET  /shop/decision/<id>     — per-product decision page
-  GET  /shop/results/<id>      — per-product results page
-  GET  /shop/simulate/<id>     — per-product what-if page
-  POST /shop/simulate/<id>     — run simulation
+- Fixed: Date serialization compatibility.
+- Fixed: Safe string slicing for dates to prevent AttributeError.
 """
 
 from flask import (Blueprint, render_template, request, redirect,
@@ -42,6 +27,7 @@ def login_required(f):
 
 
 def _raw_from_form(form):
+    """Parse and validate product form → raw dict or raise ValueError."""
     raw = {
         "product_name":         form.get("product_name", "").strip(),
         "brand_name":           form.get("brand_name", "").strip(),
@@ -95,7 +81,8 @@ def dashboard():
                 "order_action": d.get("order_action", "—"),
                 "discount_pct": d.get("discount_pct", 0),
                 "csat_score":   d.get("csat_score", "—"),
-                "analysed_at":  a.get("analysed_at", "")[:16],
+                # FIXED: String safety
+                "analysed_at": str(a.get("analysed_at", ""))[:16],
             }
         else:
             p["_summary"] = None
@@ -107,7 +94,7 @@ def dashboard():
 
 
 # ═══════════════════════════════════════════════════════════════
-# ADD PRODUCT
+# ADD, EDIT, DELETE & ANALYSE ROUTES
 # ═══════════════════════════════════════════════════════════════
 
 @shop_bp.route("/add", methods=["GET", "POST"])
@@ -138,10 +125,6 @@ def add():
     return render_template("dashboard/product_form.html",
                            mode="add", categories=CATEGORIES, form_data={})
 
-
-# ═══════════════════════════════════════════════════════════════
-# EDIT PRODUCT
-# ═══════════════════════════════════════════════════════════════
 
 @shop_bp.route("/edit/<int:product_id>", methods=["GET", "POST"])
 @login_required
@@ -177,10 +160,6 @@ def edit(product_id):
                            categories=CATEGORIES, form_data=prod)
 
 
-# ═══════════════════════════════════════════════════════════════
-# DELETE PRODUCT
-# ═══════════════════════════════════════════════════════════════
-
 @shop_bp.route("/delete/<int:product_id>", methods=["POST"])
 @login_required
 def delete(product_id):
@@ -193,10 +172,6 @@ def delete(product_id):
         flash("Product not found.", "danger")
     return redirect(url_for("shop.dashboard"))
 
-
-# ═══════════════════════════════════════════════════════════════
-# RUN ANALYSIS
-# ═══════════════════════════════════════════════════════════════
 
 @shop_bp.route("/analyse/<int:product_id>")
 @login_required
@@ -230,7 +205,7 @@ def run_analysis(product_id):
 
 
 # ═══════════════════════════════════════════════════════════════
-# PER-PRODUCT PAGES
+# PER-PRODUCT PAGES & SIMULATION
 # ═══════════════════════════════════════════════════════════════
 
 @shop_bp.route("/predict/<int:product_id>")
@@ -368,7 +343,8 @@ def analysis_table():
                 "zone_label":   d.get("zone_label", "—"),
                 "zone_color":   d.get("zone_color", "success"),
                 "days_to_sell": d.get("days_to_sell", 0),
-                "analysed_at":  a.get("analysed_at", "")[:16],
+                # FIXED: String safety
+                "analysed_at":  str(a.get("analysed_at", ""))[:16],
                 "confidence":   d.get("confidence_pct", 0),
             })
         else:
@@ -376,15 +352,15 @@ def analysis_table():
                 "id": p["id"], "name": p["product_name"],
                 "brand_name": p.get("brand_name", ""),
                 "is_visible": p.get("is_visible", 1),
-                "category": p["category"],
-                "stock": p["stock"], "price": p["current_price"],
+                "category": p["category"], "stock": p["stock"],
+                "price": p["current_price"],
                 "_not_analysed": True,
             })
 
     urgency_order = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "NONE": 3, "LOW": 4}
     rows.sort(key=lambda r: urgency_order.get(r.get("order_urgency", "NONE"), 5))
 
-    analysed     = [r for r in rows if not r.get("_not_analysed")]
+    analysed      = [r for r in rows if not r.get("_not_analysed")]
     total_revenue  = sum(r.get("revenue_30d", 0) for r in analysed)
     total_profit   = sum(r.get("profit_30d",  0) for r in analysed)
     avg_health     = round(sum(r.get("health_score", 0) for r in analysed) /
