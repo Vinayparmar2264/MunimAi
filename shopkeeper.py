@@ -3,12 +3,12 @@ shopkeeper.py — MunimAI v6 Shopkeeper Blueprint
 Multi-shop management: create/edit/delete shops, manage products per shop.
 
 Routes:
-  GET  /shopkeeper/shops              — list all my shops
-  GET  /shopkeeper/shops/new          — new shop form
-  POST /shopkeeper/shops/new          — create shop
-  GET  /shopkeeper/shops/<id>/edit    — edit shop form
-  POST /shopkeeper/shops/<id>/edit    — save shop edits
-  POST /shopkeeper/shops/<id>/delete  — delete shop
+  GET  /shopkeeper/shops             — list all my shops
+  GET  /shopkeeper/shops/new         — new shop form
+  POST /shopkeeper/shops/new         — create shop
+  GET  /shopkeeper/shops/<id>/edit   — edit shop form
+  POST /shopkeeper/shops/<id>/edit   — save shop edits
+  POST /shopkeeper/shops/<id>/delete — delete shop
   GET  /shopkeeper/shops/<id>/products            — products for one shop
   GET  /shopkeeper/shops/<id>/products/add        — add product form
   POST /shopkeeper/shops/<id>/products/add        — save new product
@@ -229,11 +229,8 @@ def shop_products(shop_id):
                 "order_action": d.get("order_action", "—"),
                 "discount_pct": d.get("discount_pct", 0),
                 "csat_score":   d.get("csat_score", "—"),
-                "analysed_at": (
-                                a.get("analysed_at").strftime("%Y-%m-%d %H:%M")
-                                if a.get("analysed_at")
-                                else ""
-                            ),
+                # BUG 1 FIXED: Safely slicing the pre-formatted string date
+                "analysed_at": str(a.get("analysed_at"))[:16] if a.get("analysed_at") else ""
             }
         else:
             p["_summary"] = None
@@ -519,11 +516,8 @@ def shop_analysis_table(shop_id):
                 "zone_label":   d.get("zone_label", "—"),
                 "zone_color":   d.get("zone_color", "success"),
                 "days_to_sell": d.get("days_to_sell", 0),
-                "analysed_at": (
-                    a.get("analysed_at").strftime("%Y-%m-%d %H:%M")
-                    if a.get("analysed_at")
-                    else ""
-                ),
+                # BUG 2 FIXED: Safely slicing the pre-formatted string date
+                "analysed_at": str(a.get("analysed_at"))[:16] if a.get("analysed_at") else "",
                 "confidence":   d.get("confidence_pct", 0),
             })
         else:
