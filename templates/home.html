@@ -45,17 +45,25 @@
         </div>
 
         <!-- Role switcher for logged-out users -->
-        {% if not session.get('user_id') %}
-        <div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap">
-          <a href="{{ url_for('auth.signup') }}"
-             style="font-size:0.82rem;color:var(--orange);font-weight:700;text-decoration:none">
-            <i class="bi bi-shop me-1"></i>Sign up as Shopkeeper →
-          </a>
-          <span style="color:var(--text-light)">·</span>
-          <a href="{{ url_for('auth.customer_signup') }}"
-             style="font-size:0.82rem;color:var(--teal);font-weight:700;text-decoration:none">
-            <i class="bi bi-bag-heart me-1"></i>Sign up as Customer →
-          </a>
+{% if not session.get('user_id') %}
+        <div style="margin-top:16px;display:flex;gap:15px;flex-wrap:wrap">
+          <div style="display:flex; flex-direction:column; gap:6px;">
+            <a href="{{ url_for('auth.login') }}" style="font-size:0.82rem;color:var(--orange);font-weight:700;text-decoration:none">
+              <i class="bi bi-box-arrow-in-right me-1"></i>Shopkeeper Log in →
+            </a>
+            <a href="{{ url_for('auth.signup') }}" style="font-size:0.82rem;color:var(--orange);font-weight:700;text-decoration:none">
+              <i class="bi bi-shop me-1"></i>Shopkeeper Sign up →
+            </a>
+          </div>
+          <span style="color:var(--text-light); align-self:center;">|</span>
+          <div style="display:flex; flex-direction:column; gap:6px;">
+            <a href="{{ url_for('auth.customer_login') }}" style="font-size:0.82rem;color:var(--teal);font-weight:700;text-decoration:none">
+              <i class="bi bi-box-arrow-in-right me-1"></i>Customer Log in →
+            </a>
+            <a href="{{ url_for('auth.customer_signup') }}" style="font-size:0.82rem;color:var(--teal);font-weight:700;text-decoration:none">
+              <i class="bi bi-bag-heart me-1"></i>Customer Sign up →
+            </a>
+          </div>
         </div>
         {% endif %}
       </div>
