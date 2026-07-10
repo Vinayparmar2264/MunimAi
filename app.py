@@ -538,17 +538,30 @@ def predict_order_action(fv, inv, forecast, lead, stock, window_days=7):
     elif zone == "LOW" or hit_rop:
         qty    = max(window_reorder_qty, eoq)
         action, urgency = "ORDER_NOW", "HIGH"
-        msg    = (f"Stock is running low — you have {days_remaining:.0f} days of stock "
-                  f"but need enough for the next {window_days} days "
-                  f"(that's {demand_for_window:.0f} units). "
-                  f"Order {qty} units now: {demand_for_window:.0f} for demand + {ss} safety buffer.")
+        if qty == eoq and eoq > window_reorder_qty:
+            msg = (f"Stock is running low — you have {days_remaining:.0f} days of stock "
+                   f"but need enough for the next {window_days} days "
+                   f"(that's {demand_for_window:.0f} units). "
+                   f"We recommend ordering the Economic Order Quantity (EOQ) of {qty} units to minimize total setup and carrying costs. "
+                   f"(Bare minimum needed to cover the {window_days}-day window is {window_reorder_qty} units: "
+                   f"{demand_for_window:.0f} units for demand + {ss} safety buffer).")
+        else:
+            msg = (f"Stock is running low — you have {days_remaining:.0f} days of stock "
+                   f"but need enough for the next {window_days} days "
+                   f"(that's {demand_for_window:.0f} units). "
+                   f"Order {qty} units now: {demand_for_window:.0f} units for demand + {ss} safety buffer.")
 
     elif zone == "BALANCED" and inten in ("Surging", "Rising"):
         qty    = max(window_reorder_qty, round(eoq * 1.25))
         action, urgency = "ORDER_SOON", "MEDIUM"
-        msg    = (f"Demand is picking up ({inten.lower()}) and you have {dc:.0f} days of stock. "
-                  f"For the next {window_days} days, expected demand is {demand_for_window:.0f} units. "
-                  f"Order {qty} units soon to stay ahead of rising demand.")
+        if qty > window_reorder_qty:
+            msg = (f"Demand is picking up ({inten.lower()}) and you have {dc:.0f} days of stock. "
+                   f"We recommend ordering {qty} units (optimized for demand trends and EOQ) soon. "
+                   f"(Minimum needed for the {window_days}-day window is {window_reorder_qty} units: "
+                   f"{demand_for_window:.0f} units for demand + {ss} safety buffer).")
+        else:
+            msg = (f"Demand is picking up ({inten.lower()}) and you have {dc:.0f} days of stock. "
+                   f"Order {qty} units soon to stay ahead of rising demand.")
 
     elif zone in ("OVERSTOCK", "HEAVY_OVERSTOCK"):
         excess = round((dc - TARGET_COVER) * dv)
