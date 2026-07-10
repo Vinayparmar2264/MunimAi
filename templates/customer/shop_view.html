@@ -355,6 +355,19 @@ function streamShopResponse(userMsg) {
       shop_id:  SHOP_ID
     })
   }).then(resp => {
+    if (!resp.ok) {
+      resp.json().then(d => {
+        const err = d.error || 'Server error';
+        bubble.innerHTML = `<span class="text-danger">⚠️ ${escHtml(err)}</span>`;
+        finalizeShop();
+      }).catch(() => {
+        resp.text().then(t => {
+          bubble.innerHTML = `<span class="text-danger">⚠️ ${escHtml(t || 'Server error')}</span>`;
+          finalizeShop();
+        });
+      });
+      return;
+    }
     const reader  = resp.body.getReader();
     const decoder = new TextDecoder();
     let buffer    = '';
