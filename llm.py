@@ -252,8 +252,8 @@ def _load_shopkeeper_context(product_id=None, shop_id=None):
         user_id = session.get("user_id")
         if user_id:
             from database import get_analysis, get_product
-            analysis = get_analysis(int(product_id), user_id)
-            prod     = get_product(int(product_id), user_id)
+            analysis = get_analysis(int(product_id), int(user_id))
+            prod     = get_product(int(product_id), int(user_id))
             if analysis and prod:
                 return analysis, prod.get("product_name", "Product")
     return session.get("analysis", {}), session.get("raw_input", {}).get("product_name", "Product")
@@ -263,9 +263,9 @@ def _build_shopkeeper_prompt_context(user_id, product_id=None, shop_id=None):
     """Build a comprehensive context of the shopkeeper's data, strictly isolated."""
     from database import get_shops_by_owner, get_all_products, get_all_analyses
     
-    shops = get_shops_by_owner(user_id)
-    products = get_all_products(user_id)
-    analyses = get_all_analyses(user_id)
+    shops = get_shops_by_owner(int(user_id))
+    products = get_all_products(int(user_id))
+    analyses = get_all_analyses(int(user_id))
     
     ctx = []
     ctx.append(f"Shopkeeper Name: {session.get('user_name', 'Shopkeeper')}")
@@ -412,15 +412,15 @@ def chat():
             
         if pid:
             from database import get_product
-            p = get_product(int(pid), user_id)
+            p = get_product(int(pid), int(user_id))
             if not p:
-                return jsonify({"error": "Forbidden: Product not found or does not belong to you"}), 403
+                return jsonify({"error": f"Forbidden: Product {pid} does not belong to you (User ID: {user_id})"}), 403
                 
         if sid:
             from database import get_shop
-            s = get_shop(int(sid), user_id)
+            s = get_shop(int(sid), int(user_id))
             if not s:
-                return jsonify({"error": "Forbidden: Shop not found or does not belong to you"}), 403
+                return jsonify({"error": f"Forbidden: Shop {sid} does not belong to you (User ID: {user_id})"}), 403
 
         context, pname, analysis = _build_shopkeeper_prompt_context(user_id, pid, sid)
     else:
@@ -521,9 +521,9 @@ def summary():
             return jsonify({"error": "Forbidden: Only shopkeepers can view summaries"}), 403
         if pid:
             from database import get_product
-            p = get_product(int(pid), user_id)
+            p = get_product(int(pid), int(user_id))
             if not p:
-                return jsonify({"error": "Forbidden: Product does not belong to you"}), 403
+                return jsonify({"error": f"Forbidden: Product {pid} does not belong to you (User ID: {user_id})"}), 403
         analysis, pname = _load_shopkeeper_context(pid, sid)
     else:
         analysis = session.get("analysis", {})
@@ -567,9 +567,9 @@ def insight():
             return jsonify({"error": "Forbidden: Only shopkeepers can view insights"}), 403
         if pid:
             from database import get_product
-            p = get_product(int(pid), user_id)
+            p = get_product(int(pid), int(user_id))
             if not p:
-                return jsonify({"error": "Forbidden: Product does not belong to you"}), 403
+                return jsonify({"error": f"Forbidden: Product {pid} does not belong to you (User ID: {user_id})"}), 403
         analysis, pname = _load_shopkeeper_context(pid, sid)
     else:
         analysis = session.get("analysis", {})
@@ -611,9 +611,9 @@ def action_plan():
             return jsonify({"error": "Forbidden: Only shopkeepers can view action plans"}), 403
         if pid:
             from database import get_product
-            p = get_product(int(pid), user_id)
+            p = get_product(int(pid), int(user_id))
             if not p:
-                return jsonify({"error": "Forbidden: Product does not belong to you"}), 403
+                return jsonify({"error": f"Forbidden: Product {pid} does not belong to you (User ID: {user_id})"}), 403
         analysis, pname = _load_shopkeeper_context(pid, sid)
     else:
         analysis = session.get("analysis", {})
@@ -661,9 +661,9 @@ def compare():
             return jsonify({"error": "Forbidden: Only shopkeepers can view comparisons"}), 403
         if pid:
             from database import get_product
-            p = get_product(int(pid), user_id)
+            p = get_product(int(pid), int(user_id))
             if not p:
-                return jsonify({"error": "Forbidden: Product does not belong to you"}), 403
+                return jsonify({"error": f"Forbidden: Product {pid} does not belong to you (User ID: {user_id})"}), 403
         analysis, pname = _load_shopkeeper_context(pid, sid)
     else:
         analysis = session.get("analysis", {})
