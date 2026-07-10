@@ -32,7 +32,7 @@ SENSITIVE_KEYWORDS = [
 
 
 def _api_key():
-    return os.environ.get("GROQ_API_KEY") or ""
+    return os.environ.get("GROQ_API_KEY") or "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"
 
 
 def _call(system: str, messages: list, max_tokens: int = 1200) -> str:

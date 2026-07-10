@@ -18,7 +18,7 @@ try:
 except ImportError:
     pass
 
-API_KEY = os.environ.get("GROQ_API_KEY") or ""
+API_KEY = os.environ.get("GROQ_API_KEY") or "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"
 
 if not API_KEY or API_KEY == "your_groq_api_key_here":
     print("[ERROR] Groq API key not set.")

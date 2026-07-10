@@ -3,6 +3,7 @@
 
 {% block head %}
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
   #map {
     height: 300px;
@@ -327,12 +328,7 @@ const initialLat = 21.1938;
 const initialLon = 81.3509;
 
 window.addEventListener('DOMContentLoaded', () => {
-  const script = document.createElement('script');
-  script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
-  script.onload = () => {
-    initMap();
-  };
-  document.body.appendChild(script);
+  initMap();
 });
 
 function initMap() {
