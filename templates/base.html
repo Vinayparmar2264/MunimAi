@@ -18,7 +18,14 @@
 <nav class="navbar navbar-expand-lg">
   <div class="container-xl">
     <a class="navbar-brand" href="{{ url_for('home') }}">
-      <div class="brand-logo"><i class="bi bi-shop"></i></div>
+      <!-- <div class="brand-logo"><i class="bi bi-shop"></i></div> -->
+
+          <div class="brand-logo">
+          <img src="{{ url_for('static', filename='logo.png') }}"
+             alt="MunimAI Logo"
+             class="logo-img">
+            </div>
+      
       <span class="brand-name">MunimAI</span>
       <span class="brand-tagline d-none d-sm-inline">Smart Retail</span>
     </a>
@@ -224,9 +231,16 @@
   <div class="container-xl">
     <div class="footer-inner">
       <div class="d-flex align-items-center gap-2">
-        <div class="brand-logo" style="width:28px;height:28px;font-size:0.8rem">
+        <!-- <div class="brand-logo" style="width:28px;height:28px;font-size:0.8rem">
           <i class="bi bi-shop"></i>
-        </div>
+        </div> -->
+
+        <div class="brand-logo">
+          <img src="{{ url_for('static', filename='logo.png') }}"
+             alt="MunimAI Logo"
+             class="logo-img">
+            </div>
+        
         <strong>MunimAI</strong>
       </div>
       <span class="footer-sep">·</span>
