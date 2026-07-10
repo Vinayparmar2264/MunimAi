@@ -1676,3 +1676,197 @@ a:hover { color: var(--orange-dark); }
 @keyframes cursorBlink {
   50% { opacity: 0; }
 }
+
+
+.logo-img{
+    width:32px;
+    height:32px;
+    object-fit:contain;
+}
+
+/* ── AI insight box (decision page "Ask AI to explain") ── */
+
+.llm-insights-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 16px;
+  background: #fff;
+  border: 1px solid var(--border-soft);
+  border-radius: 14px;
+  box-shadow: var(--shadow-sm);
+}
+
+.lir-label {
+  font-size: 0.85rem;
+  color: var(--text-body);
+  display: flex;
+  align-items: center;
+  margin-right: 4px;
+}
+
+.lir-btn {
+  border: 1px solid var(--border);
+  background: var(--bg-soft);
+  color: var(--text-body);
+  border-radius: var(--r-pill);
+  padding: 7px 14px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.lir-btn:hover {
+  background: var(--orange-light);
+  border-color: var(--orange);
+  color: var(--orange-dark);
+}
+
+.llm-insight-box {
+  margin-top: 14px;
+  background: #fff;
+  border: 1px solid var(--border-soft);
+  border-radius: 14px;
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+
+.lib-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  background: var(--bg-soft);
+  border-bottom: 1px solid var(--border-soft);
+  font-family: var(--font-head);
+  font-weight: 800;
+  font-size: 0.9rem;
+  color: var(--text-dark);
+}
+
+.lib-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, var(--orange), var(--orange-dark));
+  color: #fff;
+  font-size: 0.85rem;
+}
+
+.lib-text {
+  padding: 16px;
+  font-size: 0.9rem;
+  line-height: 1.7;
+  color: var(--text-body);
+}
+
+.llm-loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.llm-narrative p {
+  margin-bottom: 10px;
+}
+
+.llm-narrative p:last-child {
+  margin-bottom: 0;
+}
+
+.llm-narrative strong {
+  color: var(--text-dark);
+}
+
+
+/* AI narrative summary panel (results page) */
+
+.llm-summary-panel {
+  background: #fff;
+  border: 1px solid var(--border-soft);
+  border-radius: 14px;
+  box-shadow: var(--shadow-sm);
+  margin-bottom: 24px;
+  overflow: hidden;
+}
+
+.llmp-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 18px;
+  flex-wrap: wrap;
+}
+
+.llmp-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, var(--orange), var(--orange-dark));
+  color: #fff;
+  font-size: 1rem;
+}
+
+.llmp-title {
+  font-family: var(--font-head);
+  font-weight: 900;
+  font-size: 0.95rem;
+  color: var(--text-dark);
+}
+
+.llmp-sub {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.llmp-btn {
+  display: inline-flex;
+  align-items: center;
+  border: none;
+  background: linear-gradient(135deg, var(--orange), var(--orange-dark));
+  color: #fff;
+  border-radius: var(--r-pill);
+  padding: 9px 16px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.llmp-btn:hover {
+  filter: brightness(0.95);
+}
+
+.llmp-btn-outline {
+  background: #fff;
+  border: 1.5px solid var(--border);
+  color: var(--text-body);
+}
+
+.llmp-btn-outline:hover {
+  border-color: var(--orange);
+  color: var(--orange-dark);
+  filter: none;
+}
+
+.llmp-content {
+  padding: 0 18px 18px;
+  border-top: 1px solid var(--border-soft);
+  padding-top: 16px;
+  font-size: 0.9rem;
+  line-height: 1.7;
+  color: var(--text-body);
+}
