@@ -1,32 +1,16 @@
 """
-llm.py — MerchAI v6 LLM Blueprint
-Fixed problems from v5:
-  1. Chatbot now connects to actual database — reads the current shop's products
-  2. Response formatting is clean: paragraphs, bullets, proper spacing
-  3. Shop data is fully isolated — chatbot only reads the correct shop's products
-  4. Sensitive data (stock levels, cost, margins, internal metrics) is NEVER sent to LLM
-  5. If customer asks for sensitive info, chatbot politely redirects
-  6. Works for both shopkeeper mode (full context) and customer mode (public info only)
-
-Routes:
-  POST /llm/chat          — streaming chat with shop-aware context
-  POST /llm/summary       — product summary for shopkeeper
-  POST /llm/insight       — topic insight
-  POST /llm/action-plan   — 7-day action plan
-  POST /llm/compare       — compare what-if scenarios
-  POST /llm/shop-chat     — customer-facing chatbot (public info only)
-  GET  /llm/status        — API key status check
+llm.py — MerchAI v6 LLM Blueprint (Groq API Integration)
+Secured and Isolated Multi-Tenant Assistant
 """
 
 import os
 import json
+import re
+import requests
 from flask import (Blueprint, request, jsonify, Response,
                    session, stream_with_context)
-from openrouter import OpenRouter
 
 llm_bp = Blueprint("llm", __name__, url_prefix="/llm")
-
-DEFAULT_MODEL = "inclusionai/ling-2.6-flash:free"
 
 # ── Sensitive fields that must NEVER be sent to the customer chatbot ─────────
 PRIVATE_FIELDS = {
@@ -48,19 +32,88 @@ SENSITIVE_KEYWORDS = [
 
 
 def _api_key():
-    return os.environ.get("OPENROUTER_API_KEY", "")
+    return os.environ.get("GROQ_API_KEY") or ""
 
 
-def _call(system: str, messages: list, max_tokens: int = 1200):
-    """Call OpenRouter and return response content."""
-    formatted = [{"role": "system", "content": system}] + messages
-    with OpenRouter(api_key=_api_key()) as client:
-        response = client.chat.send(
-            model=DEFAULT_MODEL,
-            messages=formatted,
-            max_tokens=max_tokens
-        )
-    return response.choices[0].message.content
+def _call(system: str, messages: list, max_tokens: int = 1200) -> str:
+    """Call Groq API and return response content (non-streaming)."""
+    api_key = _api_key()
+    if not api_key:
+        raise ValueError("Groq API key (GROQ_API_KEY) not configured in .env")
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
+    
+    model = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
+    payload = {
+        "model": model,
+        "messages": [{"role": "system", "content": system}] + messages,
+        "max_tokens": max_tokens,
+        "temperature": 0.7,
+        "stream": False
+    }
+    
+    response = requests.post(
+        "https://api.groq.com/openai/v1/chat/completions",
+        headers=headers,
+        json=payload,
+        timeout=30
+    )
+    
+    if response.status_code != 200:
+        raise Exception(f"Groq API Error (Status {response.status_code}): {response.text}")
+        
+    res_json = response.json()
+    return res_json["choices"][0]["message"]["content"]
+
+
+def _call_stream(system: str, messages: list, max_tokens: int = 1200):
+    """Call Groq API and stream delta content."""
+    api_key = _api_key()
+    if not api_key:
+        raise ValueError("Groq API key (GROQ_API_KEY) not configured in .env")
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
+    
+    model = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
+    payload = {
+        "model": model,
+        "messages": [{"role": "system", "content": system}] + messages,
+        "max_tokens": max_tokens,
+        "temperature": 0.7,
+        "stream": True
+    }
+    
+    response = requests.post(
+        "https://api.groq.com/openai/v1/chat/completions",
+        headers=headers,
+        json=payload,
+        stream=True,
+        timeout=30
+    )
+    
+    if response.status_code != 200:
+        raise Exception(f"Groq API Error (Status {response.status_code}): {response.text}")
+        
+    for line in response.iter_lines():
+        if line:
+            decoded_line = line.decode('utf-8').strip()
+            if decoded_line.startswith("data: "):
+                data_str = decoded_line[6:].strip()
+                if data_str == "[DONE]":
+                    break
+                try:
+                    data_json = json.loads(data_str)
+                    delta = data_json["choices"][0]["delta"]
+                    if "content" in delta:
+                        yield delta["content"]
+                except Exception:
+                    pass
 
 
 def _is_sensitive_question(text: str) -> bool:
@@ -69,14 +122,12 @@ def _is_sensitive_question(text: str) -> bool:
     return any(kw in t for kw in SENSITIVE_KEYWORDS)
 
 
-# ── SHOPKEEPER SYSTEM PROMPT ──────────────────────────────────────────────────
+# ── SYSTEM PROMPTS ────────────────────────────────────────────────────────────
+
 def _shopkeeper_system_prompt(analysis: dict, product_name: str = "") -> str:
-    """
-    Full context prompt for shopkeeper — includes all analysis data.
-    Formatted clearly so the LLM produces structured, readable output.
-    """
+    """Full context prompt for shopkeeper — includes all analysis data."""
     if not analysis:
-        return """You are MerchAI Assistant — a friendly retail advisor for shopkeepers.
+        return """You are MunimAI Assistant — a friendly retail advisor for shopkeepers.
 Give specific, actionable advice in plain language. Use real numbers when available.
 
 Format your responses clearly:
@@ -86,7 +137,6 @@ Format your responses clearly:
 - Keep language simple and direct
 - Avoid jargon"""
 
-    # Build a clean, structured context — no sensitive raw cost data
     ctx_parts = [
         f"Product: {product_name or analysis.get('category','Product')}",
         f"Category: {analysis.get('category','')}",
@@ -124,9 +174,9 @@ Format your responses clearly:
     ]
     context = "\n".join(ctx_parts)
 
-    return f"""You are MerchAI Assistant — a friendly, expert retail advisor helping a shopkeeper manage their inventory and pricing.
+    return f"""You are MunimAI Assistant — a friendly, expert retail advisor helping a shopkeeper manage their inventory and pricing.
 
-You have full access to the AI analysis for this product. Use the data below to give specific, accurate, actionable advice.
+You have access to the AI analysis for this product. Use the data below to give specific, accurate, actionable advice.
 
 {context}
 
@@ -141,15 +191,11 @@ RESPONSE FORMATTING RULES (follow these exactly):
 8. Do not use headers with # symbols — use plain text section labels if needed"""
 
 
-# ── CUSTOMER SYSTEM PROMPT (public info only) ─────────────────────────────────
 def _customer_system_prompt(shop_name: str, public_products: list) -> str:
-    """
-    Customer-facing chatbot prompt.
-    Only includes public product info — NO stock, cost, or internal metrics.
-    """
+    """Customer-facing chatbot prompt (public info only)."""
     if public_products:
         product_lines = []
-        for p in public_products[:20]:  # limit to 20 products
+        for p in public_products[:20]:
             line = f"  • {p['product_name']}"
             if p.get("brand_name"):
                 line += f" ({p['brand_name']})"
@@ -198,15 +244,10 @@ RESPONSE FORMAT:
 • If you cannot help with something, suggest the customer speak to the shopkeeper"""
 
 
-# ═══════════════════════════════════════════════════════════════
-# HELPER: Load analysis context from session or DB
-# ═══════════════════════════════════════════════════════════════
+# ── CONTEXT BUILDERS ──────────────────────────────────────────────────────────
 
 def _load_shopkeeper_context(product_id=None, shop_id=None):
-    """
-    Load analysis for shopkeeper context.
-    Tries DB first (if product_id given), falls back to session.
-    """
+    """Fallback utility for compatibility - loads context for a single product."""
     if product_id:
         user_id = session.get("user_id")
         if user_id:
@@ -215,36 +256,143 @@ def _load_shopkeeper_context(product_id=None, shop_id=None):
             prod     = get_product(int(product_id), user_id)
             if analysis and prod:
                 return analysis, prod.get("product_name", "Product")
-    # Fallback to session
     return session.get("analysis", {}), session.get("raw_input", {}).get("product_name", "Product")
 
 
-def _load_customer_context(shop_id):
-    """Load public product data for customer chatbot."""
-    from database import get_shop, get_public_shop_products
-    shop     = get_shop(int(shop_id)) if shop_id else None
-    products = get_public_shop_products(int(shop_id)) if shop_id else []
+def _build_shopkeeper_prompt_context(user_id, product_id=None, shop_id=None):
+    """Build a comprehensive context of the shopkeeper's data, strictly isolated."""
+    from database import get_shops_by_owner, get_all_products, get_all_analyses
+    
+    shops = get_shops_by_owner(user_id)
+    products = get_all_products(user_id)
+    analyses = get_all_analyses(user_id)
+    
+    ctx = []
+    ctx.append(f"Shopkeeper Name: {session.get('user_name', 'Shopkeeper')}")
+    ctx.append("SHOPS OWNED BY THIS SHOPKEEPER:")
+    for s in shops:
+        ctx.append(f"  - Shop ID {s['id']}: '{s['shop_name']}' at location '{s['shop_location']}'")
+        
+    ctx.append("\nALL PRODUCTS AND ANALYSIS FOR THIS SHOPKEEPER:")
+    for p in products:
+        p_analysis = next((a for a in analyses if a["product_id"] == p["id"]), None)
+        line = f"  - Product ID {p['id']} in Shop {p['shop_id']}: '{p['product_name']}'"
+        if p.get("brand_name"):
+            line += f" ({p['brand_name']})"
+        line += f" | Category: {p['category']} | Price: ₹{p['current_price']} | Cost: ₹{p['cost_price']} | Stock: {p['stock']} units"
+        
+        if p_analysis:
+            d = p_analysis["analysis"]
+            line += f" | Health Score: {d.get('health_score','—')}/100 | Recommended Discount: {d.get('discount_pct', 0)}% | Reorder Action: {d.get('order_action', 'KEEP_STOCK')}"
+        ctx.append(line)
+        
+    active_analysis = {}
+    active_pname = "Product"
+    if product_id:
+        from database import get_product, get_analysis
+        prod = get_product(int(product_id), user_id)
+        if prod:
+            active_pname = prod.get("product_name", "Product")
+            analysis = get_analysis(int(product_id), user_id)
+            if analysis:
+                active_analysis = analysis
+                ctx.append(f"\nACTIVE PRODUCT IN FOCUS: '{active_pname}'")
+                ctx.append(f"  - Selling Price: ₹{analysis.get('current_price', 0)}")
+                ctx.append(f"  - Cost Price: ₹{analysis.get('cost_price', 0)}")
+                ctx.append(f"  - Stock Level: {analysis.get('stock', 0)} units")
+                ctx.append(f"  - Expiry Days Remaining: {analysis.get('expiry_days', 0)} days")
+                ctx.append(f"  - Inventory Health Score: {analysis.get('health_score', 0)}/100")
+                ctx.append(f"  - Reorder Advice: {analysis.get('order_msg', '')}")
+                ctx.append(f"  - Pricing recommendation: {analysis.get('discount_reason', '')}")
+                ctx.append(f"  - 30d projected revenue: ₹{analysis.get('projected_revenue_30d', 0):,}")
+                ctx.append(f"  - 30d projected profit: ₹{analysis.get('projected_profit_30d', 0):,}")
+                
+    return "\n".join(ctx), active_pname, active_analysis
+
+
+def _build_visitor_prompt_context():
+    """Build context for guest visitor using session data (no DB queries)."""
+    analysis = session.get("analysis", {})
+    raw_input = session.get("raw_input", {})
+    pname = raw_input.get("product_name", "Product")
+    
+    ctx = []
+    ctx.append("Guest Visitor (Not Logged In)")
+    ctx.append("SESSION ANALYSIS DATA FOR CURRENT PRODUCT:")
+    if analysis:
+        ctx.append(f"  - Product Name: '{pname}'")
+        ctx.append(f"  - Category: {analysis.get('category','')}")
+        ctx.append(f"  - Selling Price: ₹{analysis.get('current_price', 0)}")
+        ctx.append(f"  - Cost Price: ₹{analysis.get('cost_price', 0)}")
+        ctx.append(f"  - Stock: {analysis.get('stock', 0)} units")
+        ctx.append(f"  - Forecast (7d): {analysis.get('predicted_demand', 0)} units")
+        ctx.append(f"  - Inventory Health Score: {analysis.get('health_score', 0)}/100")
+        ctx.append(f"  - Recommended discount: {analysis.get('discount_pct', 0)}% ({analysis.get('discount_reason', '')})")
+        ctx.append(f"  - Reorder action: {analysis.get('order_msg', '')}")
+    else:
+        ctx.append("  No active session analysis. Answer general queries only.")
+        
+    return "\n".join(ctx), pname, analysis
+
+
+def _build_customer_prompt_context(user_id, shop_id):
+    """Build public-only customer context including user location and shop catalog."""
+    from database import get_user_by_id, get_shop, get_public_shop_products
+    
+    user = get_user_by_id(user_id)
+    shop = get_shop(int(shop_id))
+    products = get_public_shop_products(int(shop_id))
+    
     shop_name = shop["shop_name"] if shop else "this shop"
-    return shop_name, products
+    
+    ctx = []
+    ctx.append(f"Customer Name: {user['name']}")
+    ctx.append(f"Customer Email: {user['email']}")
+    ctx.append(f"Customer Location: {user.get('location_name', 'Unknown')}")
+    if user.get("latitude") and user.get("longitude"):
+        ctx.append(f"Customer Coordinates: Latitude {user['latitude']}, Longitude {user['longitude']}")
+        if shop and shop.get("latitude") and shop.get("longitude"):
+            from database import _haversine
+            dist = _haversine(user["latitude"], user["longitude"], shop["latitude"], shop["longitude"])
+            ctx.append(f"Distance to shop: {dist:.2f} km")
+            
+    ctx.append(f"\nSHOP CATALOG FOR {shop_name.upper()} (ONLY PUBLIC DATA IS ACCESSIBLE):")
+    for p in products:
+        line = f"  • {p['product_name']}"
+        if p.get("brand_name"):
+            line += f" ({p['brand_name']})"
+        line += f" — price: ₹{p['current_price']}"
+        if p.get("discount_pct") and p["discount_pct"] > 0:
+            line += f" ({p['discount_pct']}% OFF → discounted price: ₹{p['discounted_price']})"
+        if p.get("expiry_days"):
+            if p["expiry_days"] <= 0:
+                line += " [EXPIRED]"
+            elif p["expiry_days"] <= 7:
+                line += f" [Expires in {p['expiry_days']} days!]"
+            else:
+                line += f" [Fresh for {p['expiry_days']} days]"
+        ctx.append(line)
+        
+    ctx.append("\nSECURITY RULES:")
+    ctx.append("- NEVER disclose stock levels, cost prices, internal margins, reorder details, health scores, or carrying costs.")
+    ctx.append("- If asked about inventory availability, redirect politely: 'Please ask the shopkeeper directly for the latest availability.'")
+    ctx.append("- Never access or reveal other customer profiles or details.")
+    
+    return "\n".join(ctx), shop_name, products
 
 
-# ── FORMAT RESPONSE TEXT ────────────────────────────────────────
 def _format_streaming_token(token: str) -> str:
-    """
-    Escape token for SSE streaming.
-    Preserves newlines so the frontend can render proper paragraphs.
-    """
+    """Escape token for SSE streaming. Preserves newlines."""
     return token.replace("\n", "\\n")
 
 
-# ═══════════════════════════════════════════════════════════════
-# SHOPKEEPER CHAT (streaming, full analysis context)
-# ═══════════════════════════════════════════════════════════════
+# ── SHOPKEEPER & GUEST CHAT (streaming) ───────────────────────────────────────
 
 @llm_bp.route("/chat", methods=["POST"])
 def chat():
+    # Enforce basic key existence check
     if not _api_key():
-        return jsonify({"error": "OPENROUTER_API_KEY not configured"}), 401
+        return jsonify({"error": "Groq API key (GROQ_API_KEY) not configured"}), 401
 
     body     = request.get_json() or {}
     user_msg = body.get("message", "").strip()
@@ -255,23 +403,40 @@ def chat():
     if not user_msg:
         return jsonify({"error": "Empty message"}), 400
 
-    analysis, pname = _load_shopkeeper_context(pid, sid)
+    user_id = session.get("user_id")
+    if user_id:
+        # Shopkeeper route - verify role & ownership
+        role = session.get("user_role")
+        if role not in ("shopkeeper", "admin"):
+            return jsonify({"error": "Forbidden: Only shopkeepers can access this route"}), 403
+            
+        if pid:
+            from database import get_product
+            p = get_product(int(pid), user_id)
+            if not p:
+                return jsonify({"error": "Forbidden: Product not found or does not belong to you"}), 403
+                
+        if sid:
+            from database import get_shop
+            s = get_shop(int(sid), user_id)
+            if not s:
+                return jsonify({"error": "Forbidden: Shop not found or does not belong to you"}), 403
+
+        context, pname, analysis = _build_shopkeeper_prompt_context(user_id, pid, sid)
+    else:
+        # Guest Visitor route - ignore any sent DB product_id/shop_id to avoid unauthorized lookups
+        context, pname, analysis = _build_visitor_prompt_context()
+
     system   = _shopkeeper_system_prompt(analysis, pname)
+    # Inject full isolated context into the system prompt prefix
+    system = f"{context}\n\n{system}"
     messages = history[-10:] + [{"role": "user", "content": user_msg}]
 
     def generate():
         try:
-            text = _call(system, messages)
-
-            # Stream word by word with newline preservation
-            # Split on spaces but keep newline sequences intact
-            import re
-            tokens = re.split(r"(\s+)", text)
-            for token in tokens:
-                if token:
-                    escaped = _format_streaming_token(token)
-                    yield f"data: {escaped}\n\n"
-
+            for content in _call_stream(system, messages):
+                escaped = _format_streaming_token(content)
+                yield f"data: {escaped}\n\n"
             yield "data: [DONE]\n\n"
         except Exception as e:
             yield f"data: ⚠ Error: {str(e)}\n\n"
@@ -283,18 +448,12 @@ def chat():
                              "Cache-Control": "no-cache"})
 
 
-# ═══════════════════════════════════════════════════════════════
-# CUSTOMER SHOP CHAT (public info only, no sensitive data)
-# ═══════════════════════════════════════════════════════════════
+# ── CUSTOMER SHOP CHAT (streaming, public-info only) ──────────────────────────
 
 @llm_bp.route("/shop-chat", methods=["POST"])
 def shop_chat():
-    """
-    Customer-facing chatbot. Reads only public product data for the shop.
-    Refuses to answer questions about stock, cost, margins, or internal ops.
-    """
     if not _api_key():
-        return jsonify({"error": "OPENROUTER_API_KEY not configured"}), 401
+        return jsonify({"error": "Groq API key (GROQ_API_KEY) not configured"}), 401
 
     body     = request.get_json() or {}
     user_msg = body.get("message", "").strip()
@@ -307,8 +466,11 @@ def shop_chat():
     if not shop_id:
         return jsonify({"error": "No shop specified"}), 400
 
-    # Hard guard: if the question is clearly about sensitive data,
-    # return a polite redirect without even calling the LLM
+    user_id = session.get("user_id")
+    if not user_id:
+        return jsonify({"error": "Unauthorized: Please log in to use the assistant"}), 401
+
+    # Hard guard: redirect sensitive queries before they reach Groq
     if _is_sensitive_question(user_msg):
         polite_response = (
             "I'm not able to share information about stock levels or inventory details. "
@@ -319,19 +481,17 @@ def shop_chat():
         )
         return jsonify({"reply": polite_response})
 
-    shop_name, products = _load_customer_context(shop_id)
-    system   = _customer_system_prompt(shop_name, products)
+    # Load customer coordinates, locations, and public products
+    context, shop_name, public_products = _build_customer_prompt_context(user_id, shop_id)
+    system   = _customer_system_prompt(shop_name, public_products)
+    system = f"{context}\n\n{system}"
     messages = history[-8:] + [{"role": "user", "content": user_msg}]
 
     def generate():
         try:
-            text = _call(system, messages, max_tokens=600)
-            import re
-            tokens = re.split(r"(\s+)", text)
-            for token in tokens:
-                if token:
-                    escaped = _format_streaming_token(token)
-                    yield f"data: {escaped}\n\n"
+            for content in _call_stream(system, messages, max_tokens=600):
+                escaped = _format_streaming_token(content)
+                yield f"data: {escaped}\n\n"
             yield "data: [DONE]\n\n"
         except Exception as e:
             yield f"data: ⚠ Error: {str(e)}\n\n"
@@ -343,18 +503,34 @@ def shop_chat():
                              "Cache-Control": "no-cache"})
 
 
-# ═══════════════════════════════════════════════════════════════
-# SUMMARY
-# ═══════════════════════════════════════════════════════════════
+# ── SUMMARY ───────────────────────────────────────────────────────────────────
 
 @llm_bp.route("/summary", methods=["POST"])
 def summary():
     if not _api_key():
-        return jsonify({"error": "OPENROUTER_API_KEY not configured"}), 401
+        return jsonify({"error": "Groq API key not configured"}), 401
 
-    body     = request.get_json() or {}
-    pid      = body.get("product_id")
-    analysis, pname = _load_shopkeeper_context(pid)
+    body = request.get_json() or {}
+    pid  = body.get("product_id")
+    sid  = body.get("shop_id")
+
+    user_id = session.get("user_id")
+    if user_id:
+        role = session.get("user_role")
+        if role not in ("shopkeeper", "admin"):
+            return jsonify({"error": "Forbidden: Only shopkeepers can view summaries"}), 403
+        if pid:
+            from database import get_product
+            p = get_product(int(pid), user_id)
+            if not p:
+                return jsonify({"error": "Forbidden: Product does not belong to you"}), 403
+        analysis, pname = _load_shopkeeper_context(pid, sid)
+    else:
+        analysis = session.get("analysis", {})
+        pname = session.get("raw_input", {}).get("product_name", "Product")
+
+    if not analysis:
+        return jsonify({"error": "No product analysis data available"}), 400
 
     prompt = (
         f"Give a clear 3-paragraph summary of the current situation for {pname}.\n"
@@ -365,23 +541,42 @@ def summary():
     )
 
     system = _shopkeeper_system_prompt(analysis, pname)
-    text   = _call(system, [{"role": "user", "content": prompt}])
-    return jsonify({"summary": text})
+    try:
+        text   = _call(system, [{"role": "user", "content": prompt}])
+        return jsonify({"summary": text})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
-# ═══════════════════════════════════════════════════════════════
-# INSIGHT
-# ═══════════════════════════════════════════════════════════════
+# ── INSIGHT ───────────────────────────────────────────────────────────────────
 
 @llm_bp.route("/insight", methods=["POST"])
 def insight():
     if not _api_key():
-        return jsonify({"error": "OPENROUTER_API_KEY not configured"}), 401
+        return jsonify({"error": "Groq API key not configured"}), 401
 
-    body     = request.get_json() or {}
-    topic    = body.get("topic", "general")
-    pid      = body.get("product_id")
-    analysis, pname = _load_shopkeeper_context(pid)
+    body  = request.get_json() or {}
+    topic = body.get("topic", "general")
+    pid   = body.get("product_id")
+    sid   = body.get("shop_id")
+
+    user_id = session.get("user_id")
+    if user_id:
+        role = session.get("user_role")
+        if role not in ("shopkeeper", "admin"):
+            return jsonify({"error": "Forbidden: Only shopkeepers can view insights"}), 403
+        if pid:
+            from database import get_product
+            p = get_product(int(pid), user_id)
+            if not p:
+                return jsonify({"error": "Forbidden: Product does not belong to you"}), 403
+        analysis, pname = _load_shopkeeper_context(pid, sid)
+    else:
+        analysis = session.get("analysis", {})
+        pname = session.get("raw_input", {}).get("product_name", "Product")
+
+    if not analysis:
+        return jsonify({"error": "No product analysis data available"}), 400
 
     prompt = (
         f"Explain '{topic}' for this product in simple, practical terms.\n"
@@ -391,22 +586,41 @@ def insight():
     )
 
     system = _shopkeeper_system_prompt(analysis, pname)
-    text   = _call(system, [{"role": "user", "content": prompt}])
-    return jsonify({"insight": text})
+    try:
+        text   = _call(system, [{"role": "user", "content": prompt}])
+        return jsonify({"insight": text})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
-# ═══════════════════════════════════════════════════════════════
-# ACTION PLAN
-# ═══════════════════════════════════════════════════════════════
+# ── ACTION PLAN ───────────────────────────────────────────────────────────────
 
 @llm_bp.route("/action-plan", methods=["POST"])
 def action_plan():
     if not _api_key():
-        return jsonify({"error": "OPENROUTER_API_KEY not configured"}), 401
+        return jsonify({"error": "Groq API key not configured"}), 401
 
-    body     = request.get_json() or {}
-    pid      = body.get("product_id")
-    analysis, pname = _load_shopkeeper_context(pid)
+    body = request.get_json() or {}
+    pid  = body.get("product_id")
+    sid  = body.get("shop_id")
+
+    user_id = session.get("user_id")
+    if user_id:
+        role = session.get("user_role")
+        if role not in ("shopkeeper", "admin"):
+            return jsonify({"error": "Forbidden: Only shopkeepers can view action plans"}), 403
+        if pid:
+            from database import get_product
+            p = get_product(int(pid), user_id)
+            if not p:
+                return jsonify({"error": "Forbidden: Product does not belong to you"}), 403
+        analysis, pname = _load_shopkeeper_context(pid, sid)
+    else:
+        analysis = session.get("analysis", {})
+        pname = session.get("raw_input", {}).get("product_name", "Product")
+
+    if not analysis:
+        return jsonify({"error": "No product analysis data available"}), 400
 
     prompt = (
         f"Create a clear 7-day action plan for {pname}.\n"
@@ -421,26 +635,45 @@ def action_plan():
     )
 
     system = _shopkeeper_system_prompt(analysis, pname)
-    text   = _call(system, [{"role": "user", "content": prompt}], max_tokens=500)
-    return jsonify({"plan": text})
+    try:
+        text   = _call(system, [{"role": "user", "content": prompt}], max_tokens=500)
+        return jsonify({"plan": text})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
-# ═══════════════════════════════════════════════════════════════
-# COMPARE SCENARIOS
-# ═══════════════════════════════════════════════════════════════
+# ── COMPARE SCENARIOS ─────────────────────────────────────────────────────────
 
 @llm_bp.route("/compare", methods=["POST"])
 def compare():
     if not _api_key():
-        return jsonify({"error": "OPENROUTER_API_KEY not configured"}), 401
+        return jsonify({"error": "Groq API key not configured"}), 401
 
     body      = request.get_json() or {}
     scenarios = body.get("scenarios", [])
     pid       = body.get("product_id")
-    analysis, pname = _load_shopkeeper_context(pid)
+    sid       = body.get("shop_id")
+
+    user_id = session.get("user_id")
+    if user_id:
+        role = session.get("user_role")
+        if role not in ("shopkeeper", "admin"):
+            return jsonify({"error": "Forbidden: Only shopkeepers can view comparisons"}), 403
+        if pid:
+            from database import get_product
+            p = get_product(int(pid), user_id)
+            if not p:
+                return jsonify({"error": "Forbidden: Product does not belong to you"}), 403
+        analysis, pname = _load_shopkeeper_context(pid, sid)
+    else:
+        analysis = session.get("analysis", {})
+        pname = session.get("raw_input", {}).get("product_name", "Product")
 
     if not scenarios:
         return jsonify({"error": "No scenarios provided"}), 400
+
+    if not analysis:
+        return jsonify({"error": "No product analysis data available"}), 400
 
     sc_text = "\n".join([
         f"  Scenario '{s['label']}': "
@@ -462,21 +695,22 @@ def compare():
     )
 
     system = _shopkeeper_system_prompt(analysis, pname)
-    text   = _call(system, [{"role": "user", "content": prompt}], max_tokens=400)
-    return jsonify({"comparison": text})
+    try:
+        text   = _call(system, [{"role": "user", "content": prompt}], max_tokens=400)
+        return jsonify({"comparison": text})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
-# ═══════════════════════════════════════════════════════════════
-# STATUS
-# ═══════════════════════════════════════════════════════════════
+# ── STATUS ────────────────────────────────────────────────────────────────────
 
 @llm_bp.route("/status")
 def status():
     key = _api_key()
     return jsonify({
         "configured": bool(key),
-        "model": DEFAULT_MODEL,
-        "version": "v6",
+        "model": os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile"),
+        "version": "v6-groq",
         "features": ["shopkeeper_chat", "customer_chat", "shop_isolation",
-                     "sensitive_data_guard", "clean_formatting"]
+                     "sensitive_data_guard", "clean_formatting", "groq_integration"]
     })

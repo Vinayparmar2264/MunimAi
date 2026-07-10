@@ -1,6 +1,46 @@
 {% extends "base.html" %}
 {% block title %}Customer Sign Up | MunimAI{% endblock %}
 
+{% block head %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+  #map {
+    height: 300px;
+    width: 100%;
+    border-radius: 8px;
+    margin-bottom: 12px;
+    border: 1px solid #ddd;
+    z-index: 1;
+  }
+  .map-search-wrap {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  .map-layer-control {
+    margin-top: 8px;
+    margin-bottom: 12px;
+    display: flex;
+    gap: 8px;
+    font-size: 0.85rem;
+  }
+  .map-layer-btn {
+    padding: 6px 12px;
+    border-radius: 6px;
+    border: 1px solid #ccc;
+    background: #fff;
+    cursor: pointer;
+    font-size: 0.8rem;
+    font-weight: 500;
+  }
+  .map-layer-btn.active {
+    background: var(--teal, #0F766E);
+    color: #fff;
+    border-color: var(--teal, #0F766E);
+  }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="auth-page">
   <div class="container">
@@ -157,103 +197,32 @@
         </div>
 
         <div class="auth-field">
-
           <label class="form-label">
-            Your location
+            Your Location
             <span style="color:var(--text-muted);font-weight:400">
-              (optional — helps find nearby shops)
+              (Search by name or select on the map)
             </span>
           </label>
 
-          <button
-            type="button"
-            class="btn-teal w-100 mb-2"
-            onclick="captureLocation()"
-            id="locBtn"
-          >
-            <i class="bi bi-crosshair2 me-2"></i>
-            Detect My Location Automatically
-          </button>
-
-          <div
-            id="locStatus"
-            style="
-              font-size:0.8rem;
-              margin-bottom:8px;
-              display:none;
-              padding:8px 12px;
-              border-radius:var(--r-md);
-            "
-          ></div>
-
-          <div id="manualLoc" style="display:none">
-
-            <div class="row g-2">
-
-              <div class="col-12">
-
-                <input
-                  type="text"
-                  class="auth-input"
-                  id="locNameVis"
-                  placeholder="Location name"
-                  oninput="
-                    document.getElementById('locName').value=this.value
-                  "
-                />
-
-              </div>
-
-             <div class="col-6">
-  <input
-    type="text"
-    class="auth-input"
-    id="latVis"
-    placeholder="Latitude"
-    oninput="
-      document.getElementById('hidLat').value=this.value
-    "
-  />
-</div>
-
-<div class="col-6">
-  <input
-    type="text"
-    class="auth-input"
-    id="lonVis"
-    placeholder="Longitude"
-    oninput="
-      document.getElementById('hidLon').value=this.value
-    "
-  />
-</div>
-
-            </div>
+          <div class="map-search-wrap">
+            <input type="text" id="mapSearchInput" class="auth-input" placeholder="Search location (e.g. Bhilai, Paris)" />
+            <button type="button" class="btn-teal" onclick="searchLocationByName()" style="width: auto; padding: 0 16px;">
+              <i class="bi bi-search"></i>
+            </button>
           </div>
 
-          <button
-            type="button"
-            style="
-              font-size:0.78rem;
-              color:var(--text-muted);
-              background:none;
-              border:none;
-              cursor:pointer;
-              padding:4px 0;
-              margin-top:4px;
-              text-decoration:underline
-            "
-            onclick="
-              document.getElementById('manualLoc').style.display='block'
-            "
-          >
-            Enter location manually instead
-          </button>
+          <div id="map"></div>
+
+          <div class="map-layer-control">
+            <button type="button" id="btnStandard" class="map-layer-btn active" onclick="setMapLayer('standard')">Standard Map</button>
+            <button type="button" id="btnSatellite" class="map-layer-btn" onclick="setMapLayer('satellite')">Satellite View</button>
+          </div>
+
+          <div id="locStatus" style="font-size:0.8rem; margin-top:8px; margin-bottom:8px; display:none; padding:8px 12px; border-radius:var(--r-md);"></div>
 
           <input type="hidden" name="latitude" id="hidLat"/>
           <input type="hidden" name="longitude" id="hidLon"/>
           <input type="hidden" name="location_name" id="locName"/>
-
         </div>
 
         <button
@@ -281,7 +250,7 @@
 
      <div class="auth-switch">
         Already have an account?
-        <a href="{{ url_for('auth.customer_login') }}">
+        <a href="{{ url_for('auth.login') }}">
           Customer Log in →
         </a>
       </div>
@@ -342,170 +311,151 @@ if (pw2) {
 
 
 // ============================================================
-// LOCATION STATUS
+// LEAFLET MAP & SEARCH BY NAME
 // ============================================================
+let map, marker;
 
-function showLocStatus(msg, ok) {
+const standardLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{y}/{x}.png', {
+  attribution: '&copy; OpenStreetMap'
+});
 
-  const el = document.getElementById('locStatus');
+const satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+  attribution: 'Tiles &copy; Esri &mdash; Source: Esri, USDA, USGS'
+});
 
-  if (!el) return;
+const initialLat = 21.1938;
+const initialLon = 81.3509;
 
-  el.style.display = 'block';
+window.addEventListener('DOMContentLoaded', () => {
+  const script = document.createElement('script');
+  script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
+  script.onload = () => {
+    initMap();
+  };
+  document.body.appendChild(script);
+});
 
-  el.textContent = msg;
+function initMap() {
+  map = L.map('map', {
+    center: [initialLat, initialLon],
+    zoom: 12,
+    layers: [standardLayer]
+  });
 
-  el.style.background =
-    ok ? 'var(--bg-green)' : 'var(--bg-red)';
+  marker = L.marker([initialLat, initialLon], {
+    draggable: true
+  }).addTo(map);
 
-  el.style.color =
-    ok ? 'var(--green)' : 'var(--red)';
+  marker.on('dragend', function (e) {
+    const pos = marker.getLatLng();
+    updateLocationInputs(pos.lat, pos.lng);
+  });
 
-  el.style.border =
-    `1px solid ${ok ? '#86EFAC' : '#FECACA'}`;
-}
+  map.on('click', function (e) {
+    marker.setLatLng(e.latlng);
+    updateLocationInputs(e.latlng.lat, e.latlng.lng);
+  });
 
-
-// ============================================================
-// CAPTURE LOCATION
-// ============================================================
-
-function captureLocation() {
-
-  const btn = document.getElementById('locBtn');
-
-  if (!btn) return;
-
-  btn.innerHTML =
-    '<i class="bi bi-hourglass-split me-2"></i>Detecting location…';
-
-  btn.disabled = true;
-
-  // Browser support
-  if (!navigator.geolocation) {
-
-    showLocStatus(
-      'Your browser does not support GPS. Please enter manually.',
-      false
-    );
-
-    btn.innerHTML =
-      '<i class="bi bi-crosshair2 me-2"></i>Detect My Location Automatically';
-
-    btn.disabled = false;
-
-    document.getElementById('manualLoc').style.display = 'block';
-
-    return;
+  // Try GPS
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition((pos) => {
+      const lat = pos.coords.latitude;
+      const lon = pos.coords.longitude;
+      map.setView([lat, lon], 13);
+      marker.setLatLng([lat, lon]);
+      updateLocationInputs(lat, lon);
+    }, () => {
+      updateLocationInputs(initialLat, initialLon);
+    });
+  } else {
+    updateLocationInputs(initialLat, initialLon);
   }
 
-  navigator.geolocation.getCurrentPosition(
-
-    // SUCCESS
-    function(pos) {
-
-      const lat = pos.coords.latitude.toFixed(6);
-
-      const lon = pos.coords.longitude.toFixed(6);
-
-      // Hidden fields
-      document.getElementById('hidLat').value = lat;
-      document.getElementById('hidLon').value = lon;
-
-      // Visible fields safely
-      const latVis = document.getElementById('latVis');
-      const lonVis = document.getElementById('lonVis');
-
-      if (latVis) latVis.value = lat;
-      if (lonVis) lonVis.value = lon;
-
-      // Reverse geocoding
-      fetch(
-        `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`
-      )
-
-      .then(r => r.json())
-
-      .then(d => {
-
-        const name =
-          d.address?.suburb
-          || d.address?.city_district
-          || d.address?.city
-          || d.address?.town
-          || '';
-
-        document.getElementById('locName').value = name;
-
-        const locNameVis =
-          document.getElementById('locNameVis');
-
-        if (locNameVis) {
-          locNameVis.value = name;
-        }
-
-        showLocStatus(
-          `✓ Location found: ${name || lat+', '+lon}`,
-          true
-        );
-      })
-
-      .catch(() => {
-
-        document.getElementById('locName').value =
-          `${lat}, ${lon}`;
-
-        showLocStatus(
-          `✓ Location captured: ${lat}, ${lon}`,
-          true
-        );
-      });
-
-      btn.innerHTML =
-        '<i class="bi bi-check2 me-2"></i>Location Detected ✓';
-
-      btn.disabled = false;
-    },
-
-    // ERROR
-    function(err) {
-
-      showLocStatus(
-        'Could not get GPS location. Please enter manually below.',
-        false
-      );
-
-      btn.innerHTML =
-        '<i class="bi bi-crosshair2 me-2"></i>Try Again';
-
-      btn.disabled = false;
-
-      document.getElementById('manualLoc').style.display = 'block';
-    },
-
-    {
-      timeout: 10000,
-      maximumAge: 60000
+  // Handle enter key search
+  document.getElementById('mapSearchInput').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      searchLocationByName();
     }
-  );
+  });
 }
 
+function setMapLayer(type) {
+  if (type === 'satellite') {
+    map.removeLayer(standardLayer);
+    satelliteLayer.addTo(map);
+    document.getElementById('btnSatellite').classList.add('active');
+    document.getElementById('btnStandard').classList.remove('active');
+  } else {
+    map.removeLayer(satelliteLayer);
+    standardLayer.addTo(map);
+    document.getElementById('btnStandard').classList.add('active');
+    document.getElementById('btnSatellite').classList.remove('active');
+  }
+}
 
-// ============================================================
-// FORM SUBMIT DEBUG
-// ============================================================
+function updateLocationInputs(lat, lon) {
+  document.getElementById('hidLat').value = lat.toFixed(6);
+  document.getElementById('hidLon').value = lon.toFixed(6);
+  showLocStatus(`Selected coordinates: ${lat.toFixed(4)}, ${lon.toFixed(4)}`, true);
 
-const signupForm =
-  document.getElementById('customerSignupForm');
+  fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`)
+    .then(r => r.json())
+    .then(data => {
+      const name = data.display_name || data.address?.suburb || data.address?.city || '';
+      document.getElementById('locName').value = name;
+      document.getElementById('mapSearchInput').value = name;
+      showLocStatus(`Location set: ${name}`, true);
+    })
+    .catch(() => {
+      document.getElementById('locName').value = `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+    });
+}
 
+function searchLocationByName() {
+  const query = document.getElementById('mapSearchInput').value.trim();
+  if (!query) return;
+
+  showLocStatus('Searching location name...', true);
+
+  fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1`)
+    .then(r => r.json())
+    .then(results => {
+      if (results && results.length > 0) {
+        const r = results[0];
+        const lat = parseFloat(r.lat);
+        const lon = parseFloat(r.lon);
+        map.setView([lat, lon], 14);
+        marker.setLatLng([lat, lon]);
+
+        document.getElementById('hidLat').value = lat.toFixed(6);
+        document.getElementById('hidLon').value = lon.toFixed(6);
+        document.getElementById('locName').value = r.display_name;
+
+        showLocStatus(`Found: ${r.display_name}`, true);
+      } else {
+        showLocStatus('Location not found. Please try another term.', false);
+      }
+    })
+    .catch(() => {
+      showLocStatus('Search failed. Check your internet connection.', false);
+    });
+}
+
+function showLocStatus(msg, ok) {
+  const el = document.getElementById('locStatus');
+  if (!el) return;
+  el.style.display = 'block';
+  el.textContent = msg;
+  el.style.background = ok ? 'var(--bg-green, #f0fdf4)' : 'var(--bg-red, #fef2f2)';
+  el.style.color = ok ? 'var(--green, #16a34a)' : 'var(--red, #dc2626)';
+  el.style.border = `1px solid ${ok ? '#86EFAC' : '#FECACA'}`;
+}
+
+const signupForm = document.getElementById('customerSignupForm');
 if (signupForm) {
-
   signupForm.addEventListener('submit', function() {
-
-    console.log(
-      "Customer signup form submitted"
-    );
-
+    console.log("Customer signup form submitted");
   });
 }
 

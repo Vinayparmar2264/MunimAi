@@ -11,6 +11,7 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}"/>
 <!--  <link rel="stylesheet" href="{{ url_for('static', filename='style1.css') }}"/>-->
   <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}?v=2">
+  {% block head %}{% endblock %}
 </head>
 <body>
 
@@ -405,8 +406,9 @@ function streamResponse(userMsg) {
         buffer = lines.pop();
         for (const line of lines) {
           if (!line.startsWith('data:')) continue;
-          const data = line.slice(5).trim();
-          if (data === '[DONE]') { finalize(); return; }
+          let data = line.slice(5);
+          if (data.startsWith(' ')) data = data.slice(1);
+          if (data.trim() === '[DONE]') { finalize(); return; }
           const token = data.replace(/\\n/g, '\n');
           fullText += token;
           bubble.innerHTML = formatMD(fullText) + '<span class="cursor-blink">▊</span>';

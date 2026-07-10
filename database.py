@@ -16,6 +16,9 @@ FINAL STABLE VERSION
 import os
 import json
 from datetime import datetime, date
+from dotenv import load_dotenv
+
+load_dotenv()
 
 import psycopg2
 import psycopg2.extras

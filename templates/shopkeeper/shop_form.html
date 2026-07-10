@@ -1,5 +1,45 @@
 {% extends "base.html" %}
 {% block title %}{{ 'Edit Shop' if mode == 'edit' else 'Create New Shop' }} | MunimAI{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+  #map {
+    height: 300px;
+    width: 100%;
+    border-radius: 8px;
+    margin-bottom: 12px;
+    border: 1px solid #ddd;
+    z-index: 1;
+  }
+  .map-search-wrap {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  .map-layer-control {
+    margin-top: 8px;
+    margin-bottom: 12px;
+    display: flex;
+    gap: 8px;
+    font-size: 0.85rem;
+  }
+  .map-layer-btn {
+    padding: 6px 12px;
+    border-radius: 6px;
+    border: 1px solid #ccc;
+    background: #fff;
+    cursor: pointer;
+    font-size: 0.8rem;
+    font-weight: 500;
+  }
+  .map-layer-btn.active {
+    background: var(--teal, #0F766E);
+    color: #fff;
+    border-color: var(--teal, #0F766E);
+  }
+</style>
+{% endblock %}
 {% block content %}
 
 <div class="page-hero">
@@ -61,38 +101,21 @@
           <div class="card-white mb-4">
             <div class="card-section-title"><i class="bi bi-geo-alt-fill"></i>Shop Location on Map</div>
             <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:12px">
-              Pin your shop on the map so customers can find you in nearby searches.
-              Click the button below to use your current location, or enter coordinates manually.
+              Pin your shop on the map so customers can find you. Use the search box to find a location by name.
             </p>
 
-            <div class="d-flex gap-2 mb-3 flex-wrap">
-              <button type="button" class="btn-teal" onclick="getMyLocation()" id="locBtn">
-                <i class="bi bi-crosshair2 me-1"></i>Use My Current Location
-              </button>
-              <button type="button" class="btn-outline" onclick="toggleManualCoords()">
-                <i class="bi bi-keyboard me-1"></i>Enter Manually
+            <div class="map-search-wrap">
+              <input type="text" id="mapSearchInput" class="friendly-input" placeholder="Search location by name (e.g. Gandhi Nagar, Bhilai)" />
+              <button type="button" class="btn-teal" onclick="searchLocationByName()" style="width: auto; padding: 0 16px;">
+                <i class="bi bi-search"></i>
               </button>
             </div>
 
-            <div id="manualCoords" style="display:none" class="row g-2 mb-3">
-              <div class="col-6">
-                <label class="form-label" style="font-size:0.8rem">Latitude</label>
-                <input type="number" class="friendly-input" id="latInput"
-                       placeholder="e.g. 21.1938" step="0.0001"
-                       value="{{ form_data.get('latitude', '') }}"/>
-              </div>
-              <div class="col-6">
-                <label class="form-label" style="font-size:0.8rem">Longitude</label>
-                <input type="number" class="friendly-input" id="lonInput"
-                       placeholder="e.g. 81.3509" step="0.0001"
-                       value="{{ form_data.get('longitude', '') }}"/>
-              </div>
-              <div class="col-12">
-                <button type="button" class="btn-outline" style="font-size:0.82rem;padding:7px 14px"
-                        onclick="applyManualCoords()">
-                  <i class="bi bi-check2 me-1"></i>Apply Coordinates
-                </button>
-              </div>
+            <div id="map"></div>
+
+            <div class="map-layer-control">
+              <button type="button" id="btnStandard" class="map-layer-btn active" onclick="setMapLayer('standard')">Standard Map</button>
+              <button type="button" id="btnSatellite" class="map-layer-btn" onclick="setMapLayer('satellite')">Satellite View</button>
             </div>
 
             <div id="locationStatus" class="info-box" style="display:none">
@@ -146,67 +169,143 @@
 
 {% block scripts %}
 <script>
-function getMyLocation() {
-  const btn = document.getElementById('locBtn');
-  btn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>Getting location…';
-  btn.disabled = true;
+// ============================================================
+// LEAFLET MAP & SEARCH BY NAME (SHOP FORM)
+// ============================================================
+let map, marker;
 
-  if (!navigator.geolocation) {
-    showStatus('Your browser does not support location. Please enter coordinates manually.', false);
-    btn.innerHTML = '<i class="bi bi-crosshair2 me-1"></i>Use My Current Location';
-    btn.disabled = false;
-    return;
+const standardLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{y}/{x}.png', {
+  attribution: '&copy; OpenStreetMap'
+});
+
+const satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+  attribution: 'Tiles &copy; Esri &mdash; Source: Esri, USDA, USGS'
+});
+
+const defaultLat = 21.1938;
+const defaultLon = 81.3509;
+
+window.addEventListener('DOMContentLoaded', () => {
+  const script = document.createElement('script');
+  script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
+  script.onload = () => {
+    initMap();
+  };
+  document.body.appendChild(script);
+});
+
+function initMap() {
+  const savedLat = document.getElementById('hiddenLat').value;
+  const savedLon = document.getElementById('hiddenLon').value;
+  
+  const startLat = savedLat ? parseFloat(savedLat) : defaultLat;
+  const startLon = savedLon ? parseFloat(savedLon) : defaultLon;
+
+  map = L.map('map', {
+    center: [startLat, startLon],
+    zoom: savedLat ? 14 : 12,
+    layers: [standardLayer]
+  });
+
+  marker = L.marker([startLat, startLon], {
+    draggable: true
+  }).addTo(map);
+
+  if (savedLat && savedLon) {
+    showStatus(`Current location coordinates: ${startLat.toFixed(4)}, ${startLon.toFixed(4)}`, true);
+  } else {
+    // Try GPS detection if no coordinates are pre-configured
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition((pos) => {
+        const lat = pos.coords.latitude;
+        const lon = pos.coords.longitude;
+        map.setView([lat, lon], 13);
+        marker.setLatLng([lat, lon]);
+        updateLocationInputs(lat, lon);
+      });
+    }
   }
 
-  navigator.geolocation.getCurrentPosition(
-    function(pos) {
-      const lat = pos.coords.latitude.toFixed(6);
-      const lon = pos.coords.longitude.toFixed(6);
-      document.getElementById('hiddenLat').value = lat;
-      document.getElementById('hiddenLon').value = lon;
-      document.getElementById('latInput').value = lat;
-      document.getElementById('lonInput').value = lon;
-      showStatus(`✓ Location captured: ${lat}, ${lon}`, true);
-      btn.innerHTML = '<i class="bi bi-check2 me-1"></i>Location Captured';
-      btn.disabled = false;
-    },
-    function(err) {
-      showStatus('Could not get location. Please enter coordinates manually.', false);
-      btn.innerHTML = '<i class="bi bi-crosshair2 me-1"></i>Use My Current Location';
-      btn.disabled = false;
-      document.getElementById('manualCoords').style.display = 'flex';
-    },
-    { timeout: 10000, maximumAge: 60000 }
-  );
+  marker.on('dragend', function (e) {
+    const pos = marker.getLatLng();
+    updateLocationInputs(pos.lat, pos.lng);
+  });
+
+  map.on('click', function (e) {
+    marker.setLatLng(e.latlng);
+    updateLocationInputs(e.latlng.lat, e.latlng.lng);
+  });
+
+  document.getElementById('mapSearchInput').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      searchLocationByName();
+    }
+  });
 }
 
-function toggleManualCoords() {
-  const el = document.getElementById('manualCoords');
-  el.style.display = el.style.display === 'none' ? 'flex' : 'none';
+function setMapLayer(type) {
+  if (type === 'satellite') {
+    map.removeLayer(standardLayer);
+    satelliteLayer.addTo(map);
+    document.getElementById('btnSatellite').classList.add('active');
+    document.getElementById('btnStandard').classList.remove('active');
+  } else {
+    map.removeLayer(satelliteLayer);
+    standardLayer.addTo(map);
+    document.getElementById('btnStandard').classList.add('active');
+    document.getElementById('btnSatellite').classList.remove('active');
+  }
 }
 
-function applyManualCoords() {
-  const lat = document.getElementById('latInput').value;
-  const lon = document.getElementById('lonInput').value;
-  if (!lat || !lon) { showStatus('Please enter both latitude and longitude.', false); return; }
-  document.getElementById('hiddenLat').value = lat;
-  document.getElementById('hiddenLon').value = lon;
-  showStatus(`✓ Coordinates set: ${parseFloat(lat).toFixed(4)}, ${parseFloat(lon).toFixed(4)}`, true);
+function updateLocationInputs(lat, lon) {
+  document.getElementById('hiddenLat').value = lat.toFixed(6);
+  document.getElementById('hiddenLon').value = lon.toFixed(6);
+  showStatus(`Selected coordinates: ${lat.toFixed(4)}, ${lon.toFixed(4)}`, true);
+}
+
+function searchLocationByName() {
+  const query = document.getElementById('mapSearchInput').value.trim();
+  if (!query) return;
+
+  showStatus('Searching location name...', true);
+
+  fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1`)
+    .then(r => r.json())
+    .then(results => {
+      if (results && results.length > 0) {
+        const r = results[0];
+        const lat = parseFloat(r.lat);
+        const lon = parseFloat(r.lon);
+        map.setView([lat, lon], 14);
+        marker.setLatLng([lat, lon]);
+
+        document.getElementById('hiddenLat').value = lat.toFixed(6);
+        document.getElementById('hiddenLon').value = lon.toFixed(6);
+        
+        // Auto-fill address in form
+        const locationInput = document.getElementById('shopLocationText');
+        if (locationInput) {
+          locationInput.value = r.display_name;
+        }
+
+        showStatus(`Location set: ${r.display_name}`, true);
+      } else {
+        showStatus('Location not found. Try another query.', false);
+      }
+    })
+    .catch(() => {
+      showStatus('Search failed. Check your internet connection.', false);
+    });
 }
 
 function showStatus(msg, ok) {
   const el = document.getElementById('locationStatus');
   const tx = document.getElementById('locationStatusText');
+  if (!el || !tx) return;
   el.style.display = 'flex';
   tx.textContent = msg;
   el.style.borderColor = ok ? 'var(--teal)' : 'var(--red)';
 }
-
-// Show status if coordinates already set (edit mode)
-window.addEventListener('DOMContentLoaded', function() {
-  const lat = document.getElementById('hiddenLat').value;
-  const lon = document.getElementById('hiddenLon').value;
-  if (lat && lon) showStatus(`✓ Current location: ${lat}, ${lon}`, true);
-});
 </script>
 {% endblock %}

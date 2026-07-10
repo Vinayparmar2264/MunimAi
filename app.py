@@ -122,14 +122,14 @@ def load_models():
         with open(f"{MODELS_DIR}/metadata.json") as f:
             m["metadata"] = json.load(f)
         m["loaded"] = True
-        print(f"[MunimAI ] ✓ All 4 models loaded successfully")
-        print(f"             Demand R²={m['metadata']['demand_model']['r2']}  "
+        print(f"[MunimAI ] [SUCCESS] All 4 models loaded successfully")
+        print(f"             Demand R2={m['metadata']['demand_model']['r2']}  "
               f"MAPE={m['metadata']['demand_model']['mape_pct']}%")
         print(f"             Markdown Accuracy="
               f"{m['metadata']['markdown_model']['accuracy']*100:.1f}%")
-        print(f"             Health  R²={m['metadata']['health_model']['r2']}")
+        print(f"             Health  R2={m['metadata']['health_model']['r2']}")
     except Exception as e:
-        print(f"[MunimAI ] ⚠ Model loading failed: {e}")
+        print(f"[MunimAI ] [WARNING] Model loading failed: {e}")
         print("             Run: python3 train.py  to generate models first.")
         m["loaded"] = False
     return m
