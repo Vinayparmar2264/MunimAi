@@ -1,4 +1,4 @@
-# 🏪 MunimAI — Smart Retail AI Advisor & Demand Forecaster
+# 🏪 MunimAI — An AI Driven Smart Merchandising Platform
 
 **MunimAI** is a premium, full-stack SaaS platform designed to empower local shopkeepers and customers through machine learning-driven forecasting, interactive AI advice, and geolocation-based shopping. 
 
