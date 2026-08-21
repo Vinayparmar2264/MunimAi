@@ -86,5 +86,3 @@ Open your browser and navigate to `http://localhost:5000`.
 
 ---
 
-## 📄 License
-This project is licensed under the MIT License - see the LICENSE file for details.
