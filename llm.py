@@ -32,7 +32,7 @@ SENSITIVE_KEYWORDS = [
 
 
 def _api_key():
-    return os.environ.get("GROQ_API_KEY") or "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"
+    return os.environ.get("GROQ_API_KEY") or "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"
 
 
 def _call(system: str, messages: list, max_tokens: int = 1200) -> str:
@@ -46,7 +46,7 @@ def _call(system: str, messages: list, max_tokens: int = 1200) -> str:
         "Content-Type": "application/json"
     }
     
-    model = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
+    model = os.environ.get("GROQ_MODEL", "openai/gpt-oss-120b")
     payload = {
         "model": model,
         "messages": [{"role": "system", "content": system}] + messages,
@@ -80,7 +80,7 @@ def _call_stream(system: str, messages: list, max_tokens: int = 1200):
         "Content-Type": "application/json"
     }
     
-    model = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
+    model = os.environ.get("GROQ_MODEL", "openai/gpt-oss-120b")
     payload = {
         "model": model,
         "messages": [{"role": "system", "content": system}] + messages,
@@ -709,7 +709,7 @@ def status():
     key = _api_key()
     return jsonify({
         "configured": bool(key),
-        "model": os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile"),
+        "model": os.environ.get("GROQ_MODEL", "openai/gpt-oss-120b"),
         "version": "v6-groq",
         "features": ["shopkeeper_chat", "customer_chat", "shop_isolation",
                      "sensitive_data_guard", "clean_formatting", "groq_integration"]

@@ -18,7 +18,7 @@ try:
 except ImportError:
     pass
 
-API_KEY = os.environ.get("GROQ_API_KEY") or "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"
+API_KEY = os.environ.get("GROQ_API_KEY") or "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"
 
 if not API_KEY or API_KEY == "your_groq_api_key_here":
     print("[ERROR] Groq API key not set.")
@@ -34,7 +34,7 @@ headers = {
     "Content-Type": "application/json"
 }
 
-model = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
+model = os.environ.get("GROQ_MODEL", "openai/gpt-oss-120b")
 payload = {
     "model": model,
     "messages": [
